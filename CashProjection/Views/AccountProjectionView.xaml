@@ -1,0 +1,374 @@
+﻿<UserControl
+    x:Class="CashProjection.Views.AccountProjectionView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:CashProjection.Behaviors"
+    xmlns:cal="http://www.caliburnproject.org"
+    xmlns:local="clr-namespace:CashProjection.Models"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+    <UserControl.Resources>
+        <!--  Converters  -->
+        <local:BalanceToWarningConverter x:Key="BalanceToWarningConverter" />
+        <local:BalanceToDangerConverter x:Key="BalanceToDangerConverter" />
+        <local:FutureDateConverter x:Key="FutureDateConverter" />
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!--  Row style: add vertical centering  -->
+        <Style
+            x:Key="WarningRowStyle"
+            BasedOn="{StaticResource MaterialDesignDataGridRow}"
+            TargetType="DataGridRow">
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Balance, Converter={StaticResource BalanceToWarningConverter}}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignWarningBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesignOnWarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Balance, Converter={StaticResource BalanceToDangerConverter}}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignErrorBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesignOnErrorBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding TransactionDate, Converter={StaticResource FutureDateConverter}}" Value="True">
+                    <Setter Property="Opacity" Value="0.5" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <ObjectDataProvider
+            x:Key="PeriodicityEnum"
+            MethodName="GetValues"
+            ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:Periodicity" />
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+
+        <!--  Center DataGrid headers while preserving MaterialDesign styling  -->
+        <Style BasedOn="{StaticResource {x:Type DataGridColumnHeader}}" TargetType="DataGridColumnHeader">
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
+            <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
+        <!--  New: base cell style used by the grid and specific columns  -->
+        <Style
+            x:Key="BaseDataGridCellStyle"
+            BasedOn="{StaticResource MaterialDesignDataGridCell}"
+            TargetType="DataGridCell">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="BorderThickness" Value="0,0,1,0" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesignDivider}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}" />
+                    <Setter Property="BorderThickness" Value="2" />
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignSelection}" />
+                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Account Details  -->
+        <materialDesign:Card
+            Grid.Row="0"
+            Margin="0,0,0,20"
+            Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox
+                    Grid.Column="0"
+                    Margin="0,0,20,0"
+                    behaviors:SelectAllOnFocusBehavior.IsEnabled="True"
+                    materialDesign:HintAssist.Hint="Account Name"
+                    CaretBrush="{DynamicResource MaterialDesignBody}"
+                    FontSize="16"
+                    SelectionBrush="{DynamicResource SecondaryHueMidBrush}"
+                    SelectionOpacity="0.45"
+                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                    Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}" />
+
+                <TextBox
+                    x:Name="InitialBalanceTextBox"
+                    Grid.Column="1"
+                    Width="200"
+                    behaviors:SelectAllOnFocusBehavior.IsEnabled="True"
+                    materialDesign:HintAssist.Hint="Initial Balance"
+                    CaretBrush="{DynamicResource MaterialDesignBody}"
+                    FontSize="16"
+                    SelectionBrush="{DynamicResource SecondaryHueMidBrush}"
+                    SelectionOpacity="0.45"
+                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                    Text="{Binding InitialBalance, StringFormat=C2, UpdateSourceTrigger=LostFocus}" />
+            </Grid>
+        </materialDesign:Card>
+
+        <!--  Search Box (NEW)  -->
+        <!--<materialDesign:Card
+            Grid.Row="1"
+            Margin="0,0,0,20"
+            Padding="20"
+            Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVis}}">
+            <TextBox
+                x:Name="SearchTextBox"
+                Width="280"
+                Margin="0,0,8,0"
+                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+
+                materialDesign:HintAssist.Hint="Search"
+                Text="Sam"
+                Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
+                CaretBrush="{DynamicResource PrimaryHueMidBrush}"
+                Background="White" />
+			--><!--Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"--><!--
+		</materialDesign:Card>-->
+
+        <!--  Transactions DataGrid  -->
+        <materialDesign:Card Grid.Row="2" Padding="0">
+            <DataGrid
+                x:Name="TransactionsGrid"
+                materialDesign:DataGridAssist.CellPadding="12,6"
+                materialDesign:DataGridAssist.ColumnHeaderPadding="10,6"
+                AutoGenerateColumns="False"
+                Background="Transparent"
+                CanUserAddRows="True"
+                CanUserDeleteRows="False"
+                CanUserSortColumns="False"
+                GridLinesVisibility="None"
+                HeadersVisibility="All"
+                ItemsSource="{Binding Transactions}"
+                RowStyle="{StaticResource WarningRowStyle}"
+                SelectionUnit="CellOrRowHeader"
+                Style="{StaticResource MaterialDesignDataGrid}">
+
+                <!--  Stronger focus cues + centering  -->
+                <DataGrid.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="VerticalAlignment" Value="Center" />
+                    </Style>
+                    <Style TargetType="TextBox">
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                        <Setter Property="BorderThickness" Value="2" />
+                        <Setter Property="BorderBrush" Value="Transparent" />
+                        <!--  Make caret/selection visible inside grid editors  -->
+                        <Setter Property="CaretBrush" Value="{DynamicResource MaterialDesignBody}" />
+                        <Setter Property="SelectionBrush" Value="{DynamicResource SecondaryHueMidBrush}" />
+                        <Setter Property="SelectionOpacity" Value="0.45" />
+                        <Style.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+
+                    <!--  ComboBox styles specifically for DataGrid cells  -->
+                    <Style x:Key="CellComboBoxBase" TargetType="ComboBox">
+                        <!--  Center the selection box text  -->
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <!--  Trim excess chrome/padding from MaterialDesign template  -->
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="Height" Value="Auto" />
+                        <Setter Property="materialDesign:TextFieldAssist.DecorationVisibility" Value="Collapsed" />
+                        <Setter Property="materialDesign:HintAssist.IsFloating" Value="False" />
+                        <!--  Center and compact dropdown items  -->
+                        <Setter Property="ItemContainerStyle">
+                            <Setter.Value>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                                    <Setter Property="Padding" Value="8,0" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Height" Value="28" />
+                                </Style>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                    <Style
+                        x:Key="CellComboBoxElementStyle"
+                        BasedOn="{StaticResource CellComboBoxBase}"
+                        TargetType="ComboBox" />
+                    <Style
+                        x:Key="CellComboBoxEditingStyle"
+                        BasedOn="{StaticResource CellComboBoxBase}"
+                        TargetType="ComboBox" />
+
+                    <Style TargetType="ComboBox">
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                        <Setter Property="BorderThickness" Value="2" />
+                        <Setter Property="BorderBrush" Value="Transparent" />
+                        <Style.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+
+                    <Style TargetType="Button">
+                        <Setter Property="VerticalAlignment" Value="Center" />
+                    </Style>
+                </DataGrid.Resources>
+
+                <!--  columns ...  -->
+                <DataGrid.Columns>
+                    <DataGridTextColumn
+                        Width="120"
+                        Binding="{Binding TransactionDate, StringFormat=d}"
+                        Header="Date">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+
+                    <DataGridTemplateColumn Width="*" Header="Name">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <TextBox VerticalContentAlignment="Center" Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!--  Deposit  -->
+                    <DataGridTextColumn
+                        Width="120"
+                        Binding="{Binding Deposit, StringFormat=C2}"
+                        Header="Deposit">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextAlignment" Value="Right" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                        <DataGridTextColumn.EditingElementStyle>
+                            <Style TargetType="TextBox">
+                                <Setter Property="TextAlignment" Value="Right" />
+                                <Setter Property="VerticalContentAlignment" Value="Center" />
+                                <Setter Property="Text" Value="{Binding Deposit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Style>
+                        </DataGridTextColumn.EditingElementStyle>
+                    </DataGridTextColumn>
+
+                    <!--  Payment  -->
+                    <DataGridTextColumn
+                        Width="120"
+                        Binding="{Binding Payment, StringFormat=C2}"
+                        Header="Payment">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextAlignment" Value="Right" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                        <DataGridTextColumn.EditingElementStyle>
+                            <Style TargetType="TextBox">
+                                <Setter Property="TextAlignment" Value="Right" />
+                                <Setter Property="VerticalContentAlignment" Value="Center" />
+                                <Setter Property="Text" Value="{Binding Payment, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Style>
+                        </DataGridTextColumn.EditingElementStyle>
+                    </DataGridTextColumn>
+
+                    <!--  Balance  -->
+                    <DataGridTextColumn
+                        Width="120"
+                        Binding="{Binding Balance, StringFormat=C2, Mode=OneWay}"
+                        Header="Balance"
+                        IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextAlignment" Value="Right" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                        <DataGridTextColumn.CellStyle>
+                            <Style BasedOn="{StaticResource BaseDataGridCellStyle}" TargetType="DataGridCell">
+                                <Setter Property="IsTabStop" Value="False" />
+                            </Style>
+                        </DataGridTextColumn.CellStyle>
+                    </DataGridTextColumn>
+
+                    <!--  Lowest (±1 mo) indicator  -->
+                    <DataGridTemplateColumn
+                        Width="52"
+                        Header="Low"
+                        IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <!--  📉  -->
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="18"
+                                    Foreground="{DynamicResource MaterialDesign.Brush.ValidationError}"
+                                    Text="&#x2B07;&#x1F4B0;"
+                                    ToolTip="Lowest running balance within ±1 month of today"
+                                    Visibility="{Binding IsLowestNearNow, Converter={StaticResource BoolToVis}}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellStyle>
+                            <Style BasedOn="{StaticResource BaseDataGridCellStyle}" TargetType="DataGridCell">
+                                <Setter Property="IsTabStop" Value="False" />
+                            </Style>
+                        </DataGridTemplateColumn.CellStyle>
+                    </DataGridTemplateColumn>
+
+                    <!--  Periodicity (centered + compact)  -->
+                    <DataGridComboBoxColumn
+                        Width="140"
+                        EditingElementStyle="{StaticResource CellComboBoxEditingStyle}"
+                        ElementStyle="{StaticResource CellComboBoxElementStyle}"
+                        Header="Periodicity"
+                        ItemsSource="{Binding Source={StaticResource PeriodicityEnum}}"
+                        SelectedItemBinding="{Binding Periodicity}" />
+
+                    <DataGridTemplateColumn Width="100" Header="Actions">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button
+                                    VerticalAlignment="Center"
+                                    cal:Message.Attach="[Event Click] = [Action PushForward($dataContext)]"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    ToolTip="Push transaction forward by its periodicity">
+                                    <TextBlock
+                                        Text="→ →"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
+                                        RenderTransformOrigin="0.5,0.5">
+                                        <TextBlock.RenderTransform>
+                                            <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                </Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </materialDesign:Card>
+    </Grid>
+</UserControl>

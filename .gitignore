@@ -1,0 +1,92 @@
+# Visual Studio / .NET / WPF project
+# Target: Visual Studio, Caliburn.Micro WPF (.NET 10), MaterialDesign resources
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vsp
+*.vspscc
+
+# Visual Studio folders
+.vs/
+.vscode/
+
+# Build output
+[Bb]in/
+[Oo]bj/
+out/
+artifacts/
+publish/
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+_ReSharper*/
+*.DotSettings.user
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+.nuget/
+
+# Test results / coverage
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Logs, temp
+*.log
+*.tlog/
+*.cache
+*.tmp
+*.tmp_proj
+
+# VS Code workspace storage
+.history/
+
+# Local DB / data
+*.mdf
+*.ldf
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Debug/Release artifacts
+*.pdb
+*.exe
+*.dll
+
+# Publish / deployment
+publish/
+*.publishsettings
+
+# Package managers / tooling
+node_modules/
+bower_components/
+
+# Certificate / keys / secrets
+*.pfx
+*.p12
+secrets.json
+appsettings.Secret.*
+appsettings.*.Local.json
+
+# Misc
+*.ide
+*.sdf
+*.cachefile
+
+# Keep solution/project/source files
+!/*.sln
+!/**/*.csproj
+!/**/*.xaml
+!/**/*.config

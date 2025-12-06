@@ -1,0 +1,153 @@
+{
+  "AccountName": "My Account",
+  "InitialBalance": 420.69,
+  "Transactions": [
+    {
+      "Name": "The Electric Company",
+      "TransactionDate": "2025-10-11T00:00:00",
+      "Deposit": null,
+      "Payment": 320.69,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Chase Visa",
+      "TransactionDate": "2025-10-25T00:00:00",
+      "Deposit": null,
+      "Payment": 775,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Chad Paycheque",
+      "TransactionDate": "2025-10-30T00:00:00",
+      "Deposit": 1200,
+      "Payment": null,
+      "Periodicity": 5
+    },
+    {
+      "Name": "Rocket Mortgage",
+      "TransactionDate": "2025-11-01T00:00:00",
+      "Deposit": null,
+      "Payment": 1875.69,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Becky Paycheque",
+      "TransactionDate": "2025-11-06T00:00:00",
+      "Deposit": 1200.69,
+      "Payment": null,
+      "Periodicity": 5
+    },
+    {
+      "Name": "Chad Paycheque",
+      "TransactionDate": "2025-11-13T00:00:00",
+      "Deposit": 1200,
+      "Payment": null,
+      "Periodicity": 5
+    },
+    {
+      "Name": "US Bank MasterCard",
+      "TransactionDate": "2025-11-15T00:00:00",
+      "Deposit": null,
+      "Payment": 420.69,
+      "Periodicity": 1
+    },
+    {
+      "Name": "City Water and Sewer",
+      "TransactionDate": "2025-11-15T00:00:00",
+      "Deposit": null,
+      "Payment": 175,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Wireless Telephony and Data Services",
+      "TransactionDate": "2025-11-16T00:00:00",
+      "Deposit": null,
+      "Payment": 369.42,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Cable Television Provider",
+      "TransactionDate": "2025-11-17T00:00:00",
+      "Deposit": 0,
+      "Payment": 86.69,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Life Insurance",
+      "TransactionDate": "2025-11-20T00:00:00",
+      "Deposit": null,
+      "Payment": 105.69,
+      "Periodicity": 1
+    },
+    {
+      "Name": "Becky Paycheque",
+      "TransactionDate": "2025-11-20T00:00:00",
+      "Deposit": 1200.69,
+      "Payment": null,
+      "Periodicity": 5
+    },
+    {
+      "Name": "Chad Paycheque",
+      "TransactionDate": "2025-11-27T00:00:00",
+      "Deposit": 1200,
+      "Payment": null,
+      "Periodicity": 5
+    },
+    {
+      "Name": "Becky Paycheque",
+      "TransactionDate": "2025-12-04T00:00:00",
+      "Deposit": 1200.69,
+      "Payment": null,
+      "Periodicity": 5
+    },
+    {
+      "Name": "Property Tax - December",
+      "TransactionDate": "2025-12-10T00:00:00",
+      "Deposit": null,
+      "Payment": 3500,
+      "Periodicity": 4
+    },
+    {
+      "Name": "Auto Insurance",
+      "TransactionDate": "2026-03-11T00:00:00",
+      "Deposit": null,
+      "Payment": 4000,
+      "Periodicity": 4
+    },
+    {
+      "Name": "Property Tax - April",
+      "TransactionDate": "2026-04-07T00:00:00",
+      "Deposit": null,
+      "Payment": 3500,
+      "Periodicity": 4
+    },
+    {
+      "Name": "Federal Income Tax",
+      "TransactionDate": "2026-04-17T00:00:00",
+      "Deposit": null,
+      "Payment": 420.69,
+      "Periodicity": 4
+    },
+    {
+      "Name": "Auto Registration",
+      "TransactionDate": "2026-05-01T00:00:00",
+      "Deposit": null,
+      "Payment": 262,
+      "Periodicity": 4
+    },
+    {
+      "Name": "Homeowner's Insurance",
+      "TransactionDate": "2026-07-06T00:00:00",
+      "Deposit": null,
+      "Payment": 7200,
+      "Periodicity": 4
+    },
+    {
+      "Name": "Gutter Cleaning",
+      "TransactionDate": "2026-10-12T00:00:00",
+      "Deposit": null,
+      "Payment": 333,
+      "Periodicity": 4
+    }
+  ]
+}
