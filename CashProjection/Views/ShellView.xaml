@@ -41,6 +41,12 @@
                 Mode="PrimaryMid">
 				<ToolBar Background="Transparent">
 					<Button
+                        cal:Message.Attach="AddNew"
+                        Content="Add New"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Add a new transaction" />
+					<Separator />
+					<Button
                         cal:Message.Attach="Save"
                         Content="Save"
                         Style="{StaticResource MaterialDesignRaisedButton}"
