@@ -15,15 +15,20 @@ namespace CashProjection.ViewModels
 {
     public class AccountProjectionViewModel : Screen
     {
+        private static readonly TransactionComparer s_comparer = new();
         private string _accountName = "My Account";
         private decimal _initialBalance = 5000m;
-        private BindableCollection<TransactionItemViewModel> _transactions;
-        private WeakReference<FrameworkElement>? _viewRef;
+
+        // Re-entrancy guard for ResortAndRecalculate
+        private bool _isRecalculating;
 
         // Search panel state (Caliburn.Micro friendly)
         private bool _isSearchOpen;
+
         private string _searchText = string.Empty;
         private ICommand? _toggleSearchCommand;
+        private BindableCollection<TransactionItemViewModel> _transactions;
+        private WeakReference<FrameworkElement>? _viewRef;
 
         public AccountProjectionViewModel()
         {
@@ -81,20 +86,6 @@ namespace CashProjection.ViewModels
 
         public bool IsDirty { get; private set; }
 
-        public BindableCollection<TransactionItemViewModel> Transactions
-        {
-            get => _transactions;
-            set
-            {
-                if (_transactions != value)
-                {
-                    _transactions = value;
-                    NotifyOfPropertyChange();
-                    MarkDirty();
-                }
-            }
-        }
-
         // Exposed for binding to the Card Visibility (use BoolToVis in XAML)
         public bool IsSearchOpen
         {
@@ -131,10 +122,18 @@ namespace CashProjection.ViewModels
         // Caliburn also allows calling the parameterless method ToggleSearch from actions.
         public ICommand ToggleSearchCommand => _toggleSearchCommand ??= new RelayCommand(() => ToggleSearch());
 
-        // Caliburn-friendly action method (can be invoked from cal:Message.Attach or wired to UI)
-        public void ToggleSearch()
+        public BindableCollection<TransactionItemViewModel> Transactions
         {
-            IsSearchOpen = !IsSearchOpen;
+            get => _transactions;
+            set
+            {
+                if (_transactions != value)
+                {
+                    _transactions = value;
+                    NotifyOfPropertyChange();
+                    MarkDirty();
+                }
+            }
         }
 
         public void CommitPendingEdits()
@@ -158,25 +157,6 @@ namespace CashProjection.ViewModels
                     if (_viewRef != null && _viewRef.TryGetTarget(out var fe))
                     {
                         if (fe.FindName("InitialBalanceTextBox") is TextBox tb)
-                        {
-                            tb.Focus();
-                            tb.SelectAll();
-                        }
-                    }
-                })
-            );
-        }
-
-        // Focus the search TextBox when opening the panel
-        private void FocusSearch()
-        {
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(() =>
-                {
-                    if (_viewRef != null && _viewRef.TryGetTarget(out var fe))
-                    {
-                        if (fe.FindName("SearchTextBox") is TextBox tb)
                         {
                             tb.Focus();
                             tb.SelectAll();
@@ -258,8 +238,78 @@ namespace CashProjection.ViewModels
             );
         }
 
+        public void PushForward(TransactionItemViewModel transaction)
+        {
+            if (transaction == null)
+                return;
+
+            if (transaction.Periodicity == Periodicity.TwoWeeksPastLast)
+            {
+                var view = CollectionViewSource.GetDefaultView(Transactions);
+                var lastTransaction = view
+                    .OfType<TransactionItemViewModel>()
+                    .Where(t => t.Name == transaction.Name && !ReferenceEquals(t, transaction))
+                    .OrderByDescending(t => t.TransactionDate)
+                    .FirstOrDefault();
+                if (lastTransaction is not null)
+                {
+                    transaction.TransactionDate = lastTransaction.TransactionDate.AddDays(14);
+                    MarkDirty();
+                    // copilot suggests removing this, which I think is bullshit
+                    //ResortAndRecalculate();
+                    return;
+                }
+            }
+
+            transaction.TransactionDate = transaction.Periodicity switch
+            {
+                Periodicity.Monthly => transaction.TransactionDate.AddMonths(1),
+                Periodicity.Quarterly => transaction.TransactionDate.AddMonths(3),
+                Periodicity.SemiAnnually => transaction.TransactionDate.AddMonths(6),
+                Periodicity.Annually => transaction.TransactionDate.AddYears(1),
+                _ => transaction.TransactionDate,
+            };
+
+            MarkDirty();
+            // copilot suggests removing this, which I think is bullshit
+            //ResortAndRecalculate();
+        }
+
+        public void Save()
+        {
+            PersistenceService.Save(this);
+            IsDirty = false;
+        }
+
+        // Caliburn-friendly action method (can be invoked from cal:Message.Attach or wired to UI)
+        public void ToggleSearch()
+        {
+            IsSearchOpen = !IsSearchOpen;
+        }
+
+        protected override void OnViewReady(object view)
+        {
+            base.OnViewReady(view);
+            if (view is FrameworkElement fe)
+                _viewRef = new WeakReference<FrameworkElement>(fe);
+        }
+
+        private static DataGridColumn? ChooseTargetColumn(
+                    DataGrid dg,
+                    TransactionItemViewModel item
+                )
+        {
+            if (item.Deposit.HasValue)
+                return GetColumnByHeader(dg, "Deposit");
+            if (item.Payment.HasValue)
+                return GetColumnByHeader(dg, "Payment");
+
+            // Default to Name column for keyboard navigation across the row
+            return GetColumnByHeader(dg, "Name") ?? dg.Columns.FirstOrDefault();
+        }
+
         private static T? FindVisualChild<T>(DependencyObject parent)
-            where T : DependencyObject
+                    where T : DependencyObject
         {
             if (parent == null)
                 return null;
@@ -277,74 +327,15 @@ namespace CashProjection.ViewModels
         }
 
         private static DataGridColumn? GetColumnByHeader(DataGrid dg, string header) =>
-            dg.Columns.FirstOrDefault(c =>
-                c.Header is string s && s.Equals(header, StringComparison.CurrentCultureIgnoreCase)
-            );
-
-        private static DataGridColumn? ChooseTargetColumn(
-            DataGrid dg,
-            TransactionItemViewModel item
-        )
-        {
-            if (item.Deposit.HasValue)
-                return GetColumnByHeader(dg, "Deposit");
-            if (item.Payment.HasValue)
-                return GetColumnByHeader(dg, "Payment");
-
-            // Default to Name column for keyboard navigation across the row
-            return GetColumnByHeader(dg, "Name") ?? dg.Columns.FirstOrDefault();
-        }
-
-        public void PushForward(TransactionItemViewModel transaction)
-        {
-            if (transaction == null)
-                return;
-            if (transaction.Periodicity == Periodicity.TwoWeeksPastLast)
-            {
-                var lastTransaction = Transactions
-                    .Where(t => t.Name == transaction.Name)
-                    .OrderByDescending(t => t.TransactionDate)
-                    .FirstOrDefault();
-                if (lastTransaction is not null)
-                {
-                    transaction.TransactionDate = lastTransaction.TransactionDate.AddDays(14);
-                    MarkDirty();
-                    ResortAndRecalculate();
-                    return;
-                }
-            }
-
-            transaction.TransactionDate = transaction.Periodicity switch
-            {
-                Periodicity.Monthly => transaction.TransactionDate.AddMonths(1),
-                Periodicity.Quarterly => transaction.TransactionDate.AddMonths(3),
-                Periodicity.SemiAnnually => transaction.TransactionDate.AddMonths(6),
-                Periodicity.Annually => transaction.TransactionDate.AddYears(1),
-                _ => transaction.TransactionDate,
-            };
-
-            MarkDirty();
-            ResortAndRecalculate();
-        }
-
-        public void Save()
-        {
-            PersistenceService.Save(this);
-            IsDirty = false;
-        }
-
-        protected override void OnViewReady(object view)
-        {
-            base.OnViewReady(view);
-            if (view is FrameworkElement fe)
-                _viewRef = new WeakReference<FrameworkElement>(fe);
-        }
+                    dg.Columns.FirstOrDefault(c =>
+                        c.Header is string s && s.Equals(header, StringComparison.CurrentCultureIgnoreCase)
+                    );
 
         private void AddSampleTransactions()
         {
             // Load sample data from SampleData.json (fallback in PersistenceService already handles this)
             var sample = PersistenceService.Load();
-            
+
             if (sample is null)
             {
                 // If no sample data exists, initialize with empty state
@@ -364,7 +355,7 @@ namespace CashProjection.ViewModels
                 Payment = t.Payment,
                 Periodicity = t.Periodicity
             }));
-            
+
             _transactions.AddRange(vms);
             ResortAndRecalculate();
             IsDirty = false;
@@ -438,43 +429,77 @@ namespace CashProjection.ViewModels
             IsDirty = false;
         }
 
+        // Focus the search TextBox when opening the panel
+        private void FocusSearch()
+        {
+            Application.Current?.Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new System.Action(() =>
+                {
+                    if (_viewRef != null && _viewRef.TryGetTarget(out var fe))
+                    {
+                        if (fe.FindName("SearchTextBox") is TextBox tb)
+                        {
+                            tb.Focus();
+                            tb.SelectAll();
+                        }
+                    }
+                })
+            );
+        }
+
         private void MarkDirty() => IsDirty = true;
 
         private void ResortAndRecalculate()
         {
-            System.Diagnostics.Debug.WriteLine("Resorting and recalculating balances...");
+            // Re-entrancy guard: prevent cascading recalculations
+            if (_isRecalculating)
+                return;
 
-            var view = CollectionViewSource.GetDefaultView(Transactions);
-            var ordered = view.Cast<object>().OfType<TransactionItemViewModel>().ToList();
-
-            System.Diagnostics.Debug.WriteLine("Recalculating balances...");
-            decimal runningBalance = InitialBalance;
-            foreach (var t in ordered)
+            _isRecalculating = true;
+            try
             {
-                if (t.Deposit.HasValue && t.Deposit.Value != 0)
-                    runningBalance += t.Deposit.Value;
-                else if (t.Payment.HasValue && t.Payment.Value != 0)
-                    runningBalance -= t.Payment.Value;
+                System.Diagnostics.Debug.WriteLine("Resorting and recalculating balances...");
 
-                t.Balance = runningBalance;
+                // Use the base collection and sort it directly with our canonical comparer
+                // This avoids CollectionView state issues entirely
+                var ordered = _transactions
+                    .OrderBy(t => t, s_comparer)
+                    .ToList();
+
+                System.Diagnostics.Debug.WriteLine("Recalculating balances...");
+                decimal runningBalance = InitialBalance;
+                foreach (var t in ordered)
+                {
+                    if (t.Deposit.HasValue && t.Deposit.Value != 0)
+                        runningBalance += t.Deposit.Value;
+                    else if (t.Payment.HasValue && t.Payment.Value != 0)
+                        runningBalance -= t.Payment.Value;
+
+                    t.Balance = runningBalance;
+                }
+
+                var now = DateTime.Now.Date;
+                var start = now.AddMonths(-1);
+                var end = now.AddMonths(1);
+
+                var candidates = ordered
+                    .Where(t => t.TransactionDate.Date >= start && t.TransactionDate.Date <= end)
+                    .ToList();
+                TransactionItemViewModel? lowest = null;
+                if (candidates.Count > 0)
+                {
+                    var minBal = candidates.Min(t => t.Balance);
+                    lowest = candidates.FirstOrDefault(t => t.Balance == minBal);
+                }
+
+                foreach (var t in ordered)
+                    t.IsLowestNearNow = ReferenceEquals(t, lowest);
             }
-
-            var now = DateTime.Now.Date;
-            var start = now.AddMonths(-1);
-            var end = now.AddMonths(1);
-
-            var candidates = ordered
-                .Where(t => t.TransactionDate.Date >= start && t.TransactionDate.Date <= end)
-                .ToList();
-            TransactionItemViewModel? lowest = null;
-            if (candidates.Count > 0)
+            finally
             {
-                var minBal = candidates.Min(t => t.Balance);
-                lowest = candidates.FirstOrDefault(t => t.Balance == minBal);
+                _isRecalculating = false;
             }
-
-            foreach (var t in ordered)
-                t.IsLowestNearNow = ReferenceEquals(t, lowest);
         }
 
         private void Transaction_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -522,15 +547,48 @@ namespace CashProjection.ViewModels
             ResortAndRecalculate();
         }
 
-        private sealed class TransactionComparer : System.Collections.IComparer
+        // Minimal RelayCommand for KeyBinding or other ICommand usage
+        private sealed class RelayCommand : ICommand
+        {
+            private readonly System.Func<bool>? _canExecute;
+            private readonly System.Action _execute;
+
+            public RelayCommand(System.Action execute, System.Func<bool>? canExecute = null)
+            {
+                _execute = execute ?? throw new System.ArgumentNullException(nameof(execute));
+                _canExecute = canExecute;
+            }
+
+            public event EventHandler? CanExecuteChanged;
+
+            public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+
+            public void Execute(object? parameter) => _execute();
+
+            public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private sealed class TransactionComparer : System.Collections.IComparer, IComparer<TransactionItemViewModel>
         {
             public int Compare(object? x, object? y)
             {
+                if (x is TransactionItemViewModel a && y is TransactionItemViewModel b)
+                    return Compare(a, b);
+
                 if (ReferenceEquals(x, y))
                     return 0;
-                if (x is not TransactionItemViewModel a)
+                if (x is not TransactionItemViewModel)
                     return -1;
-                if (y is not TransactionItemViewModel b)
+                return 1;
+            }
+
+            public int Compare(TransactionItemViewModel? a, TransactionItemViewModel? b)
+            {
+                if (ReferenceEquals(a, b))
+                    return 0;
+                if (a is null)
+                    return -1;
+                if (b is null)
                     return 1;
 
                 int c = a.TransactionDate.CompareTo(b.TransactionDate);
@@ -548,31 +606,8 @@ namespace CashProjection.ViewModels
 
                 var aAmt = a.Payment ?? a.Deposit ?? 0m;
                 var bAmt = b.Payment ?? b.Deposit ?? 0m;
-                c = aAmt.CompareTo(bAmt);
-                if (c != 0)
-                    return c;
-
-                return 0;
+                return aAmt.CompareTo(bAmt);
             }
-        }
-
-        // Minimal RelayCommand for KeyBinding or other ICommand usage
-        private sealed class RelayCommand : ICommand
-        {
-            private readonly System.Action _execute;
-            private readonly System.Func<bool>? _canExecute;
-
-            public RelayCommand(System.Action execute, System.Func<bool>? canExecute = null)
-            {
-                _execute = execute ?? throw new System.ArgumentNullException(nameof(execute));
-                _canExecute = canExecute;
-            }
-
-            public event EventHandler? CanExecuteChanged;
-            public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
-            public void Execute(object? parameter) => _execute();
-
-            public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }
