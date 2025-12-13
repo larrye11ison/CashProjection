@@ -41,24 +41,24 @@
                 Mode="PrimaryMid">
 				<ToolBar Background="Transparent">
 					<Button
-                        cal:Message.Attach="AddNew"
+                        x:Name="AddNew"
                         Content="Add New"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Add a new transaction" />
 					<Separator />
 					<Button
-                        cal:Message.Attach="Save"
+                        x:Name="Save"
                         Content="Save"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Save to OneDrive (Ctrl+S)" />
 					<Button
-                        cal:Message.Attach="FocusInitialBalance"
+                        x:Name="FocusInitialBalance"
                         Content="Initial Balance"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Edit the initial balance (Ctrl+B)" />
 					<Separator />
 					<Button
-                        cal:Message.Attach="OpenFind"
+                        x:Name="OpenFind"
                         Content="Find"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Find transactions (Ctrl+F)" />

@@ -350,9 +350,9 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <Button
+                                        x:Name="PushForward"
                                         VerticalAlignment="Center"
                                         Margin="0,0,4,0"
-                                        cal:Message.Attach="[Event Click] = [Action PushForward($dataContext)]"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Push transaction forward by its periodicity">
                                         <TextBlock
@@ -367,8 +367,8 @@
                                         </TextBlock>
                                     </Button>
                                     <Button
+                                        x:Name="DeleteTransaction"
                                         VerticalAlignment="Center"
-                                        cal:Message.Attach="[Event Click] = [Action DeleteTransaction($dataContext)]"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Delete this transaction">
                                         <materialDesign:PackIcon
