@@ -59,8 +59,8 @@ namespace CashProjection
             var paletteHelper = new PaletteHelper();
             var theme = paletteHelper.GetTheme();
 
-            theme.SetBaseTheme(isSystemDarkMode ? BaseTheme.Dark : BaseTheme.Light);
-            paletteHelper.SetTheme(theme);
+			theme.SetBaseTheme(isSystemDarkMode ? BaseTheme.Dark : BaseTheme.Light);
+			paletteHelper.SetTheme(theme);
         }
 
         private bool IsSystemDarkMode()

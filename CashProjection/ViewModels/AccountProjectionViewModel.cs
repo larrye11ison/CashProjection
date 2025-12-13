@@ -342,15 +342,31 @@ namespace CashProjection.ViewModels
 
         private void AddSampleTransactions()
         {
-            var sample = SampleDataService.GetDefaultSampleAccount();
+            // Load sample data from SampleData.json (fallback in PersistenceService already handles this)
+            var sample = PersistenceService.Load();
+            
+            if (sample is null)
+            {
+                // If no sample data exists, initialize with empty state
+                InitialBalance = 0m;
+                AccountName = "My Account";
+                return;
+            }
 
+            AccountName = sample.AccountName;
             InitialBalance = sample.InitialBalance;
 
-            var vms = sample.Transactions.Select(m => new TransactionItemViewModel(m));
+            var vms = sample.Transactions.Select(t => new TransactionItemViewModel(new Transaction
+            {
+                Name = t.Name,
+                TransactionDate = t.TransactionDate,
+                Deposit = t.Deposit,
+                Payment = t.Payment,
+                Periodicity = t.Periodicity
+            }));
+            
             _transactions.AddRange(vms);
-
             ResortAndRecalculate();
-
             IsDirty = false;
         }
 
