@@ -355,16 +355,11 @@
                                         cal:Message.Attach="[Event Click] = [Action PushForward($dataContext)]"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Push transaction forward by its periodicity">
-                                        <TextBlock
-                                            Text="→ →"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
-                                            RenderTransformOrigin="0.5,0.5">
-                                            <TextBlock.RenderTransform>
-                                                <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
-                                            </TextBlock.RenderTransform>
-                                        </TextBlock>
+                                        <materialDesign:PackIcon
+                                            Kind="ArrowRightBold"
+                                            Width="18"
+                                            Height="18"
+                                            Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
                                     </Button>
                                     <Button
                                         VerticalAlignment="Center"
