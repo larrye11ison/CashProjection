@@ -110,6 +110,8 @@ namespace CashProjection.ViewModels
 
         public void FocusInitialBalance() => AccountVM?.FocusInitialBalance();
 
+        public void AddNew() => AccountVM?.AddNew();
+
         public void Save() => AccountVM.Save();
 
         // Open/close/confirm find

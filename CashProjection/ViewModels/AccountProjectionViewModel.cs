@@ -275,6 +275,74 @@ namespace CashProjection.ViewModels
             //ResortAndRecalculate();
         }
 
+        public void AddNew()
+        {
+            var newTransaction = new TransactionItemViewModel(new Transaction
+            {
+                Name = string.Empty,
+                TransactionDate = DateTime.Today,
+                Deposit = null,
+                Payment = null,
+                Periodicity = Periodicity.Monthly
+            });
+
+            _transactions.Add(newTransaction);
+            MarkDirty();
+
+            // Focus the new transaction's Date field after it's added to the grid
+            Application.Current?.Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new System.Action(() =>
+                {
+                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
+                        return;
+
+                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
+                        return;
+
+                    // Select the new item and focus the Date column
+                    dg.SelectedItem = newTransaction;
+                    var dateColumn = GetColumnByHeader(dg, "Date") ?? dg.Columns.FirstOrDefault();
+                    if (dateColumn is null)
+                    {
+                        dg.Focus();
+                        return;
+                    }
+
+                    dg.CurrentCell = new DataGridCellInfo(newTransaction, dateColumn);
+                    dg.ScrollIntoView(newTransaction, dateColumn);
+                    dg.UpdateLayout();
+                    dg.BeginEdit();
+                })
+            );
+        }
+
+        public void DeleteTransaction(TransactionItemViewModel transaction)
+        {
+            if (transaction == null)
+                return;
+
+            // Format the amount (either deposit or payment)
+            string amountText = transaction.Deposit.HasValue
+                ? $"deposit of {transaction.Deposit:C}"
+                : transaction.Payment.HasValue
+                    ? $"payment of {transaction.Payment:C}"
+                    : "amount of $0";
+
+            var result = MessageBox.Show(
+                $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
+                "Confirm Delete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question
+            );
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _transactions.Remove(transaction);
+                MarkDirty();
+            }
+        }
+
         public void Save()
         {
             PersistenceService.Save(this);
