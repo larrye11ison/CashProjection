@@ -79,10 +79,10 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenFind()
         {
-            _isFindOpen = true;
-            _findText = string.Empty;
+            IsFindOpen = true;
+            FindText = string.Empty;
             SearchResults.Clear();
-            _selectedSearchResult = null;
+            SelectedSearchResult = null;
 
             Application.Current?.Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
@@ -93,23 +93,23 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void CancelFind()
         {
-            _isFindOpen = false;
+            IsFindOpen = false;
         }
 
         [RelayCommand]
         public void ConfirmFind()
         {
-            var target = _selectedSearchResult?.Item ?? SearchResults.FirstOrDefault()?.Item;
+            var target = SelectedSearchResult?.Item ?? SearchResults.FirstOrDefault()?.Item;
             if (target is null)
                 return;
 
-            _isFindOpen = false;
+            IsFindOpen = false;
             AccountVM.FocusTransaction(target);
         }
 
         public void OnFindKeyDown(KeyEventArgs e)
         {
-            if (!_isFindOpen)
+            if (!IsFindOpen)
                 return;
 
             switch (e.Key)
@@ -138,17 +138,17 @@ namespace CashProjection.ViewModels
             if (SearchResults.Count == 0)
                 return;
 
-            var idx = _selectedSearchResult is null
+            var idx = SelectedSearchResult is null
                 ? -1
-                : SearchResults.IndexOf(_selectedSearchResult);
+                : SearchResults.IndexOf(SelectedSearchResult);
             idx = Math.Clamp(idx + delta, 0, SearchResults.Count - 1);
-            _selectedSearchResult = SearchResults[idx];
+            SelectedSearchResult = SearchResults[idx];
         }
 
         private void UpdateSearchResults()
         {
             var tokens = Regex
-                .Split(_findText ?? string.Empty, @"[^0-9A-Za-z]+")
+                .Split(FindText ?? string.Empty, @"[^0-9A-Za-z]+")
                 .Select(t => t.Trim())
                 .Where(t => t.Length > 0)
                 .Select(t => t.ToLowerInvariant())
@@ -156,7 +156,7 @@ namespace CashProjection.ViewModels
                 .ToArray();
 
             SearchResults.Clear();
-            _selectedSearchResult = null;
+            SelectedSearchResult = null;
 
             if (tokens.Length == 0 || AccountVM?.Transactions is null)
                 return;
@@ -178,7 +178,7 @@ namespace CashProjection.ViewModels
                 SearchResults.Add(r);
 
             if (SearchResults.Count > 0)
-                _selectedSearchResult = SearchResults[0];
+                SelectedSearchResult = SearchResults[0];
         }
 
         private void FocusFindTextBox()

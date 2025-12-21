@@ -73,12 +73,12 @@ namespace CashProjection.ViewModels
 
         partial void OnAccountNameChanged(string value)
         {
-            _isDirty = true;
+            IsDirty = true;
         }
 
         partial void OnInitialBalanceChanged(decimal value)
         {
-            _isDirty = true;
+            IsDirty = true;
             ResortAndRecalculate();
         }
 
@@ -203,7 +203,7 @@ namespace CashProjection.ViewModels
                 if (lastTransaction is not null)
                 {
                     transaction.TransactionDate = lastTransaction.TransactionDate.AddDays(14);
-                    _isDirty = true;
+                    IsDirty = true;
                     return;
                 }
             }
@@ -217,7 +217,7 @@ namespace CashProjection.ViewModels
                 _ => transaction.TransactionDate,
             };
 
-            _isDirty = true;
+            IsDirty = true;
         }
 
         [RelayCommand]
@@ -233,7 +233,7 @@ namespace CashProjection.ViewModels
             });
 
             _transactions.Add(newTransaction);
-            _isDirty = true;
+            IsDirty = true;
 
             Application.Current?.Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
@@ -283,7 +283,7 @@ namespace CashProjection.ViewModels
             if (result == MessageBoxResult.Yes)
             {
                 _transactions.Remove(transaction);
-                _isDirty = true;
+                IsDirty = true;
             }
         }
 
@@ -291,13 +291,13 @@ namespace CashProjection.ViewModels
         public void Save()
         {
             PersistenceService.Save(this);
-            _isDirty = false;
+            IsDirty = false;
         }
 
         [RelayCommand]
         public void ToggleSearch()
         {
-            _isSearchOpen = !_isSearchOpen;
+            IsSearchOpen = !IsSearchOpen;
         }
 
         private static DataGridColumn? ChooseTargetColumn(DataGrid dg, TransactionItemViewModel item)
@@ -338,13 +338,13 @@ namespace CashProjection.ViewModels
 
             if (sample is null)
             {
-                _initialBalance = 0m;
-                _accountName = "My Account";
+                InitialBalance = 0m;
+                AccountName = "My Account";
                 return;
             }
 
-            _accountName = sample.AccountName;
-            _initialBalance = sample.InitialBalance;
+            AccountName = sample.AccountName;
+            InitialBalance = sample.InitialBalance;
 
             var vms = sample.Transactions.Select(t => new TransactionItemViewModel(new Transaction
             {
@@ -357,7 +357,7 @@ namespace CashProjection.ViewModels
 
             _transactions.AddRange(vms);
             ResortAndRecalculate();
-            _isDirty = false;
+            IsDirty = false;
         }
 
         private void ApplySort()
@@ -401,11 +401,8 @@ namespace CashProjection.ViewModels
 
         private void ApplyState(AccountState state)
         {
-            _accountName = state.AccountName;
-            OnPropertyChanged(nameof(AccountName));
-
-            _initialBalance = state.InitialBalance;
-            OnPropertyChanged(nameof(InitialBalance));
+            AccountName = state.AccountName;
+            InitialBalance = state.InitialBalance;
 
             _transactions.Clear();
             var vms = state
@@ -421,7 +418,7 @@ namespace CashProjection.ViewModels
 
             _transactions.AddRange(vms);
 
-            _isDirty = false;
+            IsDirty = false;
         }
 
         private void FocusSearch()
@@ -457,7 +454,7 @@ namespace CashProjection.ViewModels
                     .ToList();
 
                 System.Diagnostics.Debug.WriteLine("Recalculating balances...");
-                decimal runningBalance = _initialBalance;
+                decimal runningBalance = InitialBalance;
                 foreach (var t in ordered)
                 {
                     if (t.Deposit.HasValue && t.Deposit.Value != 0)
@@ -503,7 +500,7 @@ namespace CashProjection.ViewModels
                     or nameof(TransactionItemViewModel.Payment)
                     or nameof(TransactionItemViewModel.Periodicity))
             {
-                _isDirty = true;
+                IsDirty = true;
                 ResortAndRecalculate();
             }
         }
@@ -527,7 +524,7 @@ namespace CashProjection.ViewModels
                 }
             }
 
-            _isDirty = true;
+            IsDirty = true;
             ResortAndRecalculate();
         }
 
