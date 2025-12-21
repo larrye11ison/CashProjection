@@ -56,6 +56,7 @@ jobs:
 
     env:
       Solution_Name: CashProjection.sln
+      Project_Path: CashProjection/CashProjection.csproj
       Test_Project_Path: ''
       Wap_Project_Directory: ''
       Wap_Project_Path: ''
@@ -87,10 +88,10 @@ jobs:
       run: dotnet test ${{ env.Test_Project_Path }} -c ${{ matrix.configuration }} --no-build
 
     - name: Publish
-      run: dotnet publish ${{ env.Solution_Name }} -c ${{ matrix.configuration }} -o ${{ runner.temp }}\publish
+      run: dotnet publish ${{ env.Project_Path }} -c ${{ matrix.configuration }} -o ${{ runner.temp }}/publish-${{ matrix.configuration }}
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: PublishedApp
-        path: ${{ runner.temp }}\publish
+        name: PublishedApp-${{ matrix.configuration }}
+        path: ${{ runner.temp }}/publish-${{ matrix.configuration }}
