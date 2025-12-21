@@ -1,18 +1,44 @@
 ﻿using System.Windows;
+using MaterialDesignThemes.Wpf;
+using Microsoft.Win32;
 
 namespace CashProjection
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
     public partial class App : Application
     {
-        private readonly Bootstrapper _bootstrapper;
-
-        public App()
+        protected override void OnStartup(StartupEventArgs e)
         {
-            InitializeComponent();
-            _bootstrapper = new Bootstrapper();
+            base.OnStartup(e);
+            
+            // Apply OS theme before displaying the window
+            ApplyOSTheme();
+        }
+
+        private static void ApplyOSTheme()
+        {
+            bool isSystemDarkMode = IsSystemDarkMode();
+
+            var paletteHelper = new PaletteHelper();
+            var theme = paletteHelper.GetTheme();
+
+            theme.SetBaseTheme(isSystemDarkMode ? BaseTheme.Dark : BaseTheme.Light);
+            paletteHelper.SetTheme(theme);
+        }
+
+        private static bool IsSystemDarkMode()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+                );
+                var value = key?.GetValue("AppsUseLightTheme");
+                return value is int i && i == 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }
