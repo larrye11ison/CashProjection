@@ -1,11 +1,12 @@
 <Window
     x:Class="CashProjection.Views.ShellView"
-	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-	xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	xmlns:cal="http://www.caliburnproject.org"
-	xmlns:behaviors="clr-namespace:CashProjection.Behaviors"
-	Title="Cash Projection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:CashProjection.Behaviors"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:vm="clr-namespace:CashProjection.ViewModels"
+    xmlns:views="clr-namespace:CashProjection.Views"
+    Title="Cash Projection"
     Width="1000"
     Height="700"
     Background="{DynamicResource MaterialDesignPaper}"
@@ -13,185 +14,179 @@
     Icon="{StaticResource AppIconImage}"
     WindowStartupLocation="CenterScreen">
 
-	<Window.Resources>
-		<BooleanToVisibilityConverter x:Key="BoolToVis" />
-	</Window.Resources>
+    <Window.DataContext>
+        <vm:ShellViewModel />
+    </Window.DataContext>
 
-	<!--  Keyboard shortcuts  -->
-	<Window.InputBindings>
-		<KeyBinding
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
+
+    <!--  Keyboard shortcuts  -->
+    <Window.InputBindings>
+        <KeyBinding
             Key="B"
             Command="{Binding FocusInitialBalanceCommand}"
             Modifiers="Control" />
-		<KeyBinding
+        <KeyBinding
             Key="S"
             Command="{Binding SaveCommand}"
             Modifiers="Control" />
-		<KeyBinding
+        <KeyBinding
             Key="F"
-            Command="{Binding FindCommand}"
+            Command="{Binding OpenFindCommand}"
             Modifiers="Control" />
-	</Window.InputBindings>
+    </Window.InputBindings>
 
-	<Grid>
-		<DockPanel>
-			<materialDesign:ColorZone
+    <Grid>
+        <DockPanel>
+            <materialDesign:ColorZone
                 Padding="8"
                 DockPanel.Dock="Top"
                 Mode="PrimaryMid">
-				<ToolBar Background="Transparent">
-					<Button
-                        x:Name="AddNew"
+                <ToolBar Background="Transparent">
+                    <Button
+                        Command="{Binding AddNewCommand}"
                         Content="Add New"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Add a new transaction" />
-					<Separator />
-					<Button
-                        x:Name="Save"
+                    <Separator />
+                    <Button
+                        Command="{Binding SaveCommand}"
                         Content="Save"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Save to OneDrive (Ctrl+S)" />
-					<Button
-                        x:Name="FocusInitialBalance"
+                    <Button
+                        Command="{Binding FocusInitialBalanceCommand}"
                         Content="Initial Balance"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Edit the initial balance (Ctrl+B)" />
-					<Separator />
-					<Button
-                        x:Name="OpenFind"
+                    <Separator />
+                    <Button
+                        Command="{Binding OpenFindCommand}"
                         Content="Find"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Find transactions (Ctrl+F)" />
-				</ToolBar>
-			</materialDesign:ColorZone>
+                </ToolBar>
+            </materialDesign:ColorZone>
 
-			<ContentControl x:Name="ActiveItem" />
-		</DockPanel>
+            <views:AccountProjectionView DataContext="{Binding AccountVM}" />
+        </DockPanel>
 
-		<!--  Modal Find overlay  -->
-		<Grid
+        <!--  Modal Find overlay  -->
+        <Grid
             Panel.ZIndex="100"
-            cal:Message.Attach="[Event PreviewKeyDown] = [Action OnFindKeyDown($eventArgs)]"
             Background="#80000000"
             FocusManager.FocusedElement="{Binding ElementName=FindTextBox}"
+            PreviewKeyDown="Grid_PreviewKeyDown"
             Visibility="{Binding IsFindOpen, Converter={StaticResource BoolToVis}}">
-			<!--  60% centered layout  -->
-			<Grid>
-				<Grid.RowDefinitions>
-					<RowDefinition Height="2*" />
-					<RowDefinition Height="6*" />
-					<RowDefinition Height="2*" />
-				</Grid.RowDefinitions>
-				<Grid.ColumnDefinitions>
-					<ColumnDefinition Width="2*" />
-					<ColumnDefinition Width="6*" />
-					<ColumnDefinition Width="2*" />
-				</Grid.ColumnDefinitions>
+            <!--  60% centered layout  -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2*" />
+                    <RowDefinition Height="6*" />
+                    <RowDefinition Height="2*" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="6*" />
+                    <ColumnDefinition Width="2*" />
+                </Grid.ColumnDefinitions>
 
-				<materialDesign:Card
+                <materialDesign:Card
                     Grid.Row="1"
                     Grid.Column="1"
                     Padding="16"
                     Background="{DynamicResource MaterialDesignPaper}"
                     UniformCornerRadius="6">
-					<Grid>
-						<Grid.RowDefinitions>
-							<RowDefinition Height="Auto" />
-							<RowDefinition Height="*" />
-							<RowDefinition Height="Auto" />
-						</Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-						<!--  Search box  -->
-						<DockPanel Grid.Row="0" LastChildFill="True">
-							<TextBlock
+                        <!--  Search box  -->
+                        <DockPanel Grid.Row="0" LastChildFill="True">
+                            <TextBlock
                                 Margin="0,0,8,0"
                                 VerticalAlignment="Center"
                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
                                 Text="Find:" />
-							<!-- Replace the FindTextBox styling so foreground/caret/background contrast reliably -->
-							<TextBox
-								x:Name="FindTextBox"
-								Height="40"
-								MinWidth="320"
-								materialDesign:HintAssist.Hint="Search by name..."	
-								Text="{Binding FindText, UpdateSourceTrigger=PropertyChanged}"
-								FontSize="18"
-								VerticalContentAlignment="Center"
-								Background="{DynamicResource MaterialDesignPaper}"
-								CaretBrush="{DynamicResource PrimaryHueMidBrush}"
-								Foreground="{DynamicResource MaterialDesignBody}"
-								SelectionBrush="{DynamicResource SecondaryHueMidBrush}"
-								SelectionOpacity="0.45" />
-							<!--
-							Style="{StaticResource MaterialDesignOutlinedTextBox}"
-							
-							-->
-						</DockPanel>
+                            <TextBox
+                                x:Name="FindTextBox"
+                                Height="40"
+                                MinWidth="320"
+                                Background="{DynamicResource MaterialDesignPaper}"
+                                CaretBrush="{DynamicResource PrimaryHueMidBrush}"
+                                FontSize="18"
+                                Foreground="{DynamicResource MaterialDesignBody}"
+                                SelectionBrush="{DynamicResource SecondaryHueMidBrush}"
+                                SelectionOpacity="0.45"
+                                Text="{Binding FindText, UpdateSourceTrigger=PropertyChanged}"
+                                VerticalContentAlignment="Center"
+                                materialDesign:HintAssist.Hint="Search by name..." />
+                        </DockPanel>
 
-						<!--  Results: ListView with Date + Name + Deposit + Payment  -->
-						<ListView
+                        <!--  Results: ListView with Date + Name + Deposit + Payment  -->
+                        <ListView
                             Grid.Row="1"
                             Margin="0,12,0,12"
                             behaviors:GridViewColumnResize.IsEnabled="True"
-                            cal:Message.Attach="[Event MouseDoubleClick] = [Action ConfirmFind()]"
                             ItemsSource="{Binding SearchResults}"
                             KeyboardNavigation.TabNavigation="Continue"
+                            MouseDoubleClick="ListView_MouseDoubleClick"
                             ScrollViewer.VerticalScrollBarVisibility="Auto"
                             SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
                             Style="{StaticResource MaterialDesignListView}">
-							<ListView.View>
-								<GridView>
-									<GridViewColumn
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn
                                         behaviors:GridViewColumnResize.Width="Auto"
                                         DisplayMemberBinding="{Binding Item.TransactionDate, StringFormat=d}"
                                         Header="Date" />
-									<GridViewColumn
+                                    <GridViewColumn
                                         behaviors:GridViewColumnResize.Width="*"
                                         DisplayMemberBinding="{Binding Item.Name}"
                                         Header="Name" />
-									<GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Deposit">
-										<GridViewColumn.CellTemplate>
-											<DataTemplate>
-												<TextBlock Text="{Binding Item.Deposit, StringFormat={}{0:C}, TargetNullValue=''}" TextAlignment="Right" />
-											</DataTemplate>
-										</GridViewColumn.CellTemplate>
-									</GridViewColumn>
-									<GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Payment">
-										<GridViewColumn.CellTemplate>
-											<DataTemplate>
-												<TextBlock Text="{Binding Item.Payment, StringFormat={}{0:C}, TargetNullValue=''}" TextAlignment="Right" />
-											</DataTemplate>
-										</GridViewColumn.CellTemplate>
-									</GridViewColumn>
-								</GridView>
-							</ListView.View>
-							<!--<ListView.ItemContainerStyle>
-                                <Style BasedOn="{DynamicResource {x:Type ListViewItem}}" TargetType="ListViewItem">
-                                    <Setter Property="Padding" Value="8,4" />
-                                </Style>
-                            </ListView.ItemContainerStyle>-->
-						</ListView>
+                                    <GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Deposit">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Item.Deposit, StringFormat={}{0:C}, TargetNullValue=''}" TextAlignment="Right" />
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                    <GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Payment">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Item.Payment, StringFormat={}{0:C}, TargetNullValue=''}" TextAlignment="Right" />
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
 
-						<!--  Buttons  -->
-						<StackPanel
+                        <!--  Buttons  -->
+                        <StackPanel
                             Grid.Row="2"
                             HorizontalAlignment="Right"
                             Orientation="Horizontal">
-							<Button
+                            <Button
                                 Margin="0,0,8,0"
-                                cal:Message.Attach="ConfirmFind"
+                                Command="{Binding ConfirmFindCommand}"
                                 Content="OK"
                                 IsDefault="True"
                                 Style="{StaticResource MaterialDesignRaisedButton}" />
-							<Button
-                                cal:Message.Attach="CancelFind"
+                            <Button
+                                Command="{Binding CancelFindCommand}"
                                 Content="Cancel"
                                 IsCancel="True"
                                 Style="{StaticResource MaterialDesignOutlinedButton}" />
-						</StackPanel>
-					</Grid>
-				</materialDesign:Card>
-			</Grid>
-		</Grid>
-	</Grid>
+                        </StackPanel>
+                    </Grid>
+                </materialDesign:Card>
+            </Grid>
+        </Grid>
+    </Grid>
 </Window>

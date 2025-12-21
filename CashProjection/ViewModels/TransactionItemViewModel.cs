@@ -1,13 +1,17 @@
-using Caliburn.Micro;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CashProjection.Models;
 
 namespace CashProjection.ViewModels
 {
     // ViewModel wrapper around the pure Transaction model
-    public sealed class TransactionItemViewModel : PropertyChangedBase
+    public sealed partial class TransactionItemViewModel : ObservableObject
     {
         private readonly Transaction _model;
+
+        [ObservableProperty]
         private decimal _balance;
+
+        [ObservableProperty]
         private bool _isLowestNearNow;
 
         public TransactionItemViewModel(Transaction model)
@@ -26,7 +30,7 @@ namespace CashProjection.ViewModels
                 if (_model.Name != value)
                 {
                     _model.Name = value;
-                    NotifyOfPropertyChange();
+                    OnPropertyChanged();
                 }
             }
         }
@@ -39,7 +43,7 @@ namespace CashProjection.ViewModels
                 if (_model.TransactionDate != value)
                 {
                     _model.TransactionDate = value;
-                    NotifyOfPropertyChange();
+                    OnPropertyChanged();
                 }
             }
         }
@@ -56,7 +60,7 @@ namespace CashProjection.ViewModels
                     {
                         _model.Deposit = null;
                         _model.Payment = 0;
-                        NotifyOfPropertyChange(nameof(Payment));
+                        OnPropertyChanged(nameof(Payment));
                     }
                     else
                     {
@@ -64,10 +68,10 @@ namespace CashProjection.ViewModels
                         if (value.HasValue)
                         {
                             _model.Payment = null;
-                            NotifyOfPropertyChange(nameof(Payment));
+                            OnPropertyChanged(nameof(Payment));
                         }
                     }
-                    NotifyOfPropertyChange();
+                    OnPropertyChanged();
                 }
             }
         }
@@ -83,9 +87,9 @@ namespace CashProjection.ViewModels
                     if (value.HasValue)
                     {
                         _model.Deposit = null;
-                        NotifyOfPropertyChange(nameof(Deposit));
+                        OnPropertyChanged(nameof(Deposit));
                     }
-                    NotifyOfPropertyChange();
+                    OnPropertyChanged();
                 }
             }
         }
@@ -98,34 +102,7 @@ namespace CashProjection.ViewModels
                 if (_model.Periodicity != value)
                 {
                     _model.Periodicity = value;
-                    NotifyOfPropertyChange();
-                }
-            }
-        }
-
-        // UI-only projection state
-        public decimal Balance
-        {
-            get => _balance;
-            set
-            {
-                if (_balance != value)
-                {
-                    _balance = value;
-                    NotifyOfPropertyChange();
-                }
-            }
-        }
-
-        public bool IsLowestNearNow
-        {
-            get => _isLowestNearNow;
-            set
-            {
-                if (_isLowestNearNow != value)
-                {
-                    _isLowestNearNow = value;
-                    NotifyOfPropertyChange();
+                    OnPropertyChanged();
                 }
             }
         }

@@ -1,84 +1,50 @@
 using System;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using Caliburn.Micro;
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace CashProjection.ViewModels
 {
-    public class ShellViewModel : Conductor<object>, IGuardClose
+    public sealed partial class ShellViewModel : ObservableObject
     {
         private WeakReference<FrameworkElement>? _viewRef;
+
+        [ObservableProperty]
+        private bool _isFindOpen;
+
+        [ObservableProperty]
+        private string _findText = string.Empty;
+
+        [ObservableProperty]
+        private SearchResult? _selectedSearchResult;
 
         public ShellViewModel()
         {
             AccountVM = new AccountProjectionViewModel();
-            ActivateItemAsync(AccountVM);
-
-            // Commands
-            FocusInitialBalanceCommand = new RelayCommand(_ => FocusInitialBalance());
-            SaveCommand = new RelayCommand(_ => Save());
-            FindCommand = new RelayCommand(_ => OpenFind());
-
-            SearchResults = new BindableCollection<SearchResult>();
+            SearchResults = new ObservableCollection<SearchResult>();
         }
 
         public AccountProjectionViewModel AccountVM { get; }
-        public ICommand FocusInitialBalanceCommand { get; }
-        public ICommand SaveCommand { get; }
-        public ICommand FindCommand { get; }
 
-        // Find overlay state
-        private bool _isFindOpen;
-        public bool IsFindOpen
+        public ObservableCollection<SearchResult> SearchResults { get; }
+
+        partial void OnFindTextChanged(string value)
         {
-            get => _isFindOpen;
-            set
-            {
-                if (_isFindOpen != value)
-                {
-                    _isFindOpen = value;
-                    NotifyOfPropertyChange(() => IsFindOpen);
-                }
-            }
+            UpdateSearchResults();
         }
 
-        private string _findText = string.Empty;
-        public string FindText
+        public void SetViewReference(FrameworkElement view)
         {
-            get => _findText;
-            set
-            {
-                if (_findText != value)
-                {
-                    _findText = value;
-                    NotifyOfPropertyChange(() => FindText);
-                    UpdateSearchResults();
-                }
-            }
+            _viewRef = new WeakReference<FrameworkElement>(view);
         }
 
-        public BindableCollection<SearchResult> SearchResults { get; }
-        private SearchResult? _selectedSearchResult;
-        public SearchResult? SelectedSearchResult
-        {
-            get => _selectedSearchResult;
-            set
-            {
-                if (!Equals(_selectedSearchResult, value))
-                {
-                    _selectedSearchResult = value;
-                    NotifyOfPropertyChange(() => SelectedSearchResult);
-                }
-            }
-        }
-
-        public override Task<bool> CanCloseAsync(CancellationToken cancellationToken)
+        public bool CanClose()
         {
             AccountVM?.CommitPendingEdits();
 
@@ -92,62 +58,58 @@ namespace CashProjection.ViewModels
                 );
 
                 if (result == MessageBoxResult.Cancel)
-                    return Task.FromResult(false);
+                    return false;
 
                 if (result == MessageBoxResult.Yes)
                     AccountVM.Save();
             }
 
-            return Task.FromResult(true);
+            return true;
         }
 
-        protected override void OnViewReady(object view)
-        {
-            base.OnViewReady(view);
-            if (view is FrameworkElement fe)
-                _viewRef = new WeakReference<FrameworkElement>(fe);
-        }
-
+        [RelayCommand]
         public void FocusInitialBalance() => AccountVM?.FocusInitialBalance();
 
+        [RelayCommand]
         public void AddNew() => AccountVM?.AddNew();
 
+        [RelayCommand]
         public void Save() => AccountVM.Save();
 
-        // Open/close/confirm find
+        [RelayCommand]
         public void OpenFind()
         {
-            IsFindOpen = true;
-            FindText = string.Empty;
+            _isFindOpen = true;
+            _findText = string.Empty;
             SearchResults.Clear();
-            SelectedSearchResult = null;
+            _selectedSearchResult = null;
 
-            // Defer to UI thread so the overlay is measured/visible before focusing
             Application.Current?.Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
                 new System.Action(FocusFindTextBox)
             );
         }
 
+        [RelayCommand]
         public void CancelFind()
         {
-            IsFindOpen = false;
+            _isFindOpen = false;
         }
 
+        [RelayCommand]
         public void ConfirmFind()
         {
-            var target = SelectedSearchResult?.Item ?? SearchResults.FirstOrDefault()?.Item;
+            var target = _selectedSearchResult?.Item ?? SearchResults.FirstOrDefault()?.Item;
             if (target is null)
                 return;
 
-            IsFindOpen = false;
+            _isFindOpen = false;
             AccountVM.FocusTransaction(target);
         }
 
-        // Handle Enter/Escape/Up/Down while typing or anywhere in the overlay
         public void OnFindKeyDown(KeyEventArgs e)
         {
-            if (!IsFindOpen)
+            if (!_isFindOpen)
                 return;
 
             switch (e.Key)
@@ -176,17 +138,17 @@ namespace CashProjection.ViewModels
             if (SearchResults.Count == 0)
                 return;
 
-            var idx = SelectedSearchResult is null
+            var idx = _selectedSearchResult is null
                 ? -1
-                : SearchResults.IndexOf(SelectedSearchResult);
+                : SearchResults.IndexOf(_selectedSearchResult);
             idx = Math.Clamp(idx + delta, 0, SearchResults.Count - 1);
-            SelectedSearchResult = SearchResults[idx];
+            _selectedSearchResult = SearchResults[idx];
         }
 
         private void UpdateSearchResults()
         {
             var tokens = Regex
-                .Split(FindText ?? string.Empty, @"[^0-9A-Za-z]+")
+                .Split(_findText ?? string.Empty, @"[^0-9A-Za-z]+")
                 .Select(t => t.Trim())
                 .Where(t => t.Length > 0)
                 .Select(t => t.ToLowerInvariant())
@@ -194,7 +156,7 @@ namespace CashProjection.ViewModels
                 .ToArray();
 
             SearchResults.Clear();
-            SelectedSearchResult = null;
+            _selectedSearchResult = null;
 
             if (tokens.Length == 0 || AccountVM?.Transactions is null)
                 return;
@@ -216,7 +178,7 @@ namespace CashProjection.ViewModels
                 SearchResults.Add(r);
 
             if (SearchResults.Count > 0)
-                SelectedSearchResult = SearchResults[0];
+                _selectedSearchResult = SearchResults[0];
         }
 
         private void FocusFindTextBox()
@@ -225,11 +187,11 @@ namespace CashProjection.ViewModels
             {
                 if (fe.FindName("FindTextBox") is TextBox tb)
                 {
-					tb.Focus();
+                    tb.Focus();
                     tb.SelectAll();
                     Keyboard.Focus(tb);
                 }
-			}
+            }
         }
 
         public sealed class SearchResult
@@ -238,33 +200,12 @@ namespace CashProjection.ViewModels
             {
                 Item = item;
                 Hits = hits;
-                Display = $"{item.TransactionDate:d}  —  {item.Name}";
+                Display = $"{item.TransactionDate:d}  –  {item.Name}";
             }
 
             public TransactionItemViewModel Item { get; }
             public int Hits { get; }
             public string Display { get; }
-        }
-
-        private sealed class RelayCommand : ICommand
-        {
-            private readonly Func<object?, bool>? _canExecute;
-            private readonly Action<object?> _execute;
-
-            public RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null)
-            {
-                _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-                _canExecute = canExecute;
-            }
-
-            public event EventHandler? CanExecuteChanged;
-
-            public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
-
-            public void Execute(object? parameter) => _execute(parameter);
-
-            public void RaiseCanExecuteChanged() =>
-                CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

@@ -3,7 +3,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:behaviors="clr-namespace:CashProjection.Behaviors"
-    xmlns:cal="http://www.caliburnproject.org"
     xmlns:local="clr-namespace:CashProjection.Models"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:sys="clr-namespace:System;assembly=mscorlib">
@@ -118,26 +117,6 @@
                     Text="{Binding InitialBalance, StringFormat=C2, UpdateSourceTrigger=LostFocus}" />
             </Grid>
         </materialDesign:Card>
-
-        <!--  Search Box (NEW)  -->
-        <!--<materialDesign:Card
-            Grid.Row="1"
-            Margin="0,0,0,20"
-            Padding="20"
-            Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVis}}">
-            <TextBox
-                x:Name="SearchTextBox"
-                Width="280"
-                Margin="0,0,8,0"
-                Style="{StaticResource MaterialDesignOutlinedTextBox}"
-
-                materialDesign:HintAssist.Hint="Search"
-                Text="Sam"
-                Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
-                CaretBrush="{DynamicResource PrimaryHueMidBrush}"
-                Background="White" />
-			--><!--Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"--><!--
-		</materialDesign:Card>-->
 
         <!--  Transactions DataGrid  -->
         <materialDesign:Card Grid.Row="2" Padding="0">
@@ -352,18 +331,20 @@
                                     <Button
                                         VerticalAlignment="Center"
                                         Margin="0,0,4,0"
-                                        cal:Message.Attach="[Event Click] = [Action PushForward($dataContext)]"
+                                        Command="{Binding DataContext.PushForwardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Push transaction forward by its periodicity">
                                         <materialDesign:PackIcon
-                                            Kind="ArrowRightBold"
+                                            Kind="Forward"
                                             Width="18"
                                             Height="18"
                                             Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
                                     </Button>
                                     <Button
                                         VerticalAlignment="Center"
-                                        cal:Message.Attach="[Event Click] = [Action DeleteTransaction($dataContext)]"
+                                        Command="{Binding DataContext.DeleteTransactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Delete this transaction">
                                         <materialDesign:PackIcon
