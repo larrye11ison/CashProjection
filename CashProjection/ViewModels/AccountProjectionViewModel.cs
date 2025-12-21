@@ -42,7 +42,7 @@ namespace CashProjection.ViewModels
 
         public AccountProjectionViewModel()
         {
-            _transactions = new ObservableCollection<TransactionItemViewModel>();
+            _transactions = [];
             _transactions.CollectionChanged += Transactions_CollectionChanged;
 
             // Load saved state if it exists; otherwise load sample data

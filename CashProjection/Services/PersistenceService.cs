@@ -43,7 +43,8 @@ public static class PersistenceService
             AccountName = vm.AccountName,
             InitialBalance = vm.InitialBalance,
             Transactions = vm
-                .Transactions.Select(t => new TransactionState
+                .Transactions
+                .Select(t => new TransactionState
                 {
                     Name = t.Name,
                     TransactionDate = t.TransactionDate,

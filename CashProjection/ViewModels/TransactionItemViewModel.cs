@@ -3,10 +3,23 @@ using CashProjection.Models;
 
 namespace CashProjection.ViewModels
 {
-    // ViewModel wrapper around the pure Transaction model
+    // ViewModel for a transaction item in the UI
     public sealed partial class TransactionItemViewModel : ObservableObject
     {
-        private readonly Transaction _model;
+        [ObservableProperty]
+        private string _name = string.Empty;
+
+        [ObservableProperty]
+        private DateTime _transactionDate = DateTime.Today;
+
+        [ObservableProperty]
+        private decimal? _deposit;
+
+        [ObservableProperty]
+        private decimal? _payment;
+
+        [ObservableProperty]
+        private Periodicity _periodicity;
 
         [ObservableProperty]
         private decimal _balance;
@@ -14,96 +27,51 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private bool _isLowestNearNow;
 
+        // Default constructor for new transactions
+        public TransactionItemViewModel()
+        {
+        }
+
+        // Constructor to load from a model (when loading from disk)
         public TransactionItemViewModel(Transaction model)
         {
-            _model = model;
+            Name = model.Name;
+            TransactionDate = model.TransactionDate;
+            Deposit = model.Deposit;
+            Payment = model.Payment;
+            Periodicity = model.Periodicity;
         }
 
-        // Expose the underlying model if needed by services
-        public Transaction Model => _model;
-
-        public string Name
+        // Convert to model for saving
+        public Transaction ToModel() => new Transaction
         {
-            get => _model.Name;
-            set
+            Name = Name,
+            TransactionDate = TransactionDate,
+            Deposit = Deposit,
+            Payment = Payment,
+            Periodicity = Periodicity
+        };
+
+        // Handle the special business logic for Deposit/Payment mutual exclusion
+        partial void OnDepositChanged(decimal? value)
+        {
+            // Preserve prior UX: 0 nullifies deposit and sets payment=0
+            if (value == 0)
             {
-                if (_model.Name != value)
-                {
-                    _model.Name = value;
-                    OnPropertyChanged();
-                }
+                Deposit = null;
+                Payment = 0;
+            }
+            else if (value.HasValue)
+            {
+                Payment = null;
             }
         }
 
-        public DateTime TransactionDate
+        partial void OnPaymentChanged(decimal? value)
         {
-            get => _model.TransactionDate;
-            set
+            if (value.HasValue)
             {
-                if (_model.TransactionDate != value)
-                {
-                    _model.TransactionDate = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        public decimal? Deposit
-        {
-            get => _model.Deposit;
-            set
-            {
-                if (_model.Deposit != value)
-                {
-                    // Preserve prior UX: 0 nullifies deposit and sets payment=0 (so no effect on balance)
-                    if (value == 0)
-                    {
-                        _model.Deposit = null;
-                        _model.Payment = 0;
-                        OnPropertyChanged(nameof(Payment));
-                    }
-                    else
-                    {
-                        _model.Deposit = value;
-                        if (value.HasValue)
-                        {
-                            _model.Payment = null;
-                            OnPropertyChanged(nameof(Payment));
-                        }
-                    }
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        public decimal? Payment
-        {
-            get => _model.Payment;
-            set
-            {
-                if (_model.Payment != value)
-                {
-                    _model.Payment = value;
-                    if (value.HasValue)
-                    {
-                        _model.Deposit = null;
-                        OnPropertyChanged(nameof(Deposit));
-                    }
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        public Periodicity Periodicity
-        {
-            get => _model.Periodicity;
-            set
-            {
-                if (_model.Periodicity != value)
-                {
-                    _model.Periodicity = value;
-                    OnPropertyChanged();
-                }
+                Deposit = null;
             }
         }
     }

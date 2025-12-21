@@ -14,7 +14,7 @@ namespace CashProjection
             ApplyOSTheme();
         }
 
-        private void ApplyOSTheme()
+        private static void ApplyOSTheme()
         {
             bool isSystemDarkMode = IsSystemDarkMode();
 
@@ -25,7 +25,7 @@ namespace CashProjection
             paletteHelper.SetTheme(theme);
         }
 
-        private bool IsSystemDarkMode()
+        private static bool IsSystemDarkMode()
         {
             try
             {
