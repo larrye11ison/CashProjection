@@ -18,7 +18,7 @@ public sealed class AccountState
 {
     public string AccountName { get; set; } = string.Empty;
     public decimal InitialBalance { get; set; }
-    public List<TransactionState> Transactions { get; set; } = new();
+    public List<TransactionState> Transactions { get; set; } = [];
 }
 
 public static class PersistenceService
@@ -43,7 +43,8 @@ public static class PersistenceService
             AccountName = vm.AccountName,
             InitialBalance = vm.InitialBalance,
             Transactions = vm
-                .Transactions.Select(t => new TransactionState
+                .Transactions
+                .Select(t => new TransactionState
                 {
                     Name = t.Name,
                     TransactionDate = t.TransactionDate,

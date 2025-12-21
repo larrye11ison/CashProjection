@@ -1,5 +1,4 @@
 using System.Globalization;
-using Caliburn.Micro;
 
 namespace CashProjection.Models
 {

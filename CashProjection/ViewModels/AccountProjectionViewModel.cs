@@ -7,32 +7,42 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Caliburn.Micro;
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using CashProjection.Models;
 using CashProjection.Services;
 
 namespace CashProjection.ViewModels
 {
-    public class AccountProjectionViewModel : Screen
+    public sealed partial class AccountProjectionViewModel : ObservableObject
     {
         private static readonly TransactionComparer s_comparer = new();
+
+        [ObservableProperty]
         private string _accountName = "My Account";
-        private decimal _initialBalance = 5000m;
+
+        [ObservableProperty]
+        private decimal _initialBalance = 0m;
+
+        [ObservableProperty]
+        private bool _isDirty;
 
         // Re-entrancy guard for ResortAndRecalculate
         private bool _isRecalculating;
 
-        // Search panel state (Caliburn.Micro friendly)
+        [ObservableProperty]
         private bool _isSearchOpen;
 
+        [ObservableProperty]
         private string _searchText = string.Empty;
-        private ICommand? _toggleSearchCommand;
-        private BindableCollection<TransactionItemViewModel> _transactions;
+
+        private ObservableCollection<TransactionItemViewModel> _transactions;
         private WeakReference<FrameworkElement>? _viewRef;
 
         public AccountProjectionViewModel()
         {
-            _transactions = new BindableCollection<TransactionItemViewModel>();
+            _transactions = [];
             _transactions.CollectionChanged += Transactions_CollectionChanged;
 
             // Load saved state if it exists; otherwise load sample data
@@ -52,88 +62,54 @@ namespace CashProjection.ViewModels
             ApplySort();
             ResortAndRecalculate();
 
-            IsDirty = false;
+            _isDirty = false;
         }
 
-        public string AccountName
-        {
-            get => _accountName;
-            set
-            {
-                if (_accountName != value)
-                {
-                    _accountName = value;
-                    NotifyOfPropertyChange();
-                    MarkDirty();
-                }
-            }
-        }
-
-        public decimal InitialBalance
-        {
-            get => _initialBalance;
-            set
-            {
-                if (_initialBalance != value)
-                {
-                    _initialBalance = value;
-                    NotifyOfPropertyChange();
-                    MarkDirty();
-                    ResortAndRecalculate();
-                }
-            }
-        }
-
-        public bool IsDirty { get; private set; }
-
-        // Exposed for binding to the Card Visibility (use BoolToVis in XAML)
-        public bool IsSearchOpen
-        {
-            get => _isSearchOpen;
-            set
-            {
-                if (_isSearchOpen != value)
-                {
-                    _isSearchOpen = value;
-                    NotifyOfPropertyChange();
-                    // When opening the search panel, focus the textbox
-                    if (_isSearchOpen)
-                        FocusSearch();
-                }
-            }
-        }
-
-        // Bound to the search TextBox in the view
-        public string SearchText
-        {
-            get => _searchText;
-            set
-            {
-                if (_searchText != value)
-                {
-                    _searchText = value;
-                    NotifyOfPropertyChange();
-                    // Optionally: trigger filtering here
-                }
-            }
-        }
-
-        // Provide an ICommand for use with KeyBinding (Ctrl+F) in XAML if desired.
-        // Caliburn also allows calling the parameterless method ToggleSearch from actions.
-        public ICommand ToggleSearchCommand => _toggleSearchCommand ??= new RelayCommand(() => ToggleSearch());
-
-        public BindableCollection<TransactionItemViewModel> Transactions
+        public ObservableCollection<TransactionItemViewModel> Transactions
         {
             get => _transactions;
-            set
+            set => SetProperty(ref _transactions, value);
+        }
+
+        [RelayCommand]
+        public void AddNew()
+        {
+            var newTransaction = new TransactionItemViewModel(new Transaction
             {
-                if (_transactions != value)
+                Name = string.Empty,
+                TransactionDate = DateTime.Today,
+                Deposit = null,
+                Payment = null,
+                Periodicity = Periodicity.Monthly
+            });
+
+            _transactions.Add(newTransaction);
+            IsDirty = true;
+
+            Application.Current?.Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new System.Action(() =>
                 {
-                    _transactions = value;
-                    NotifyOfPropertyChange();
-                    MarkDirty();
-                }
-            }
+                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
+                        return;
+
+                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
+                        return;
+
+                    dg.SelectedItem = newTransaction;
+                    var dateColumn = GetColumnByHeader(dg, "Date") ?? dg.Columns.FirstOrDefault();
+                    if (dateColumn is null)
+                    {
+                        dg.Focus();
+                        return;
+                    }
+
+                    dg.CurrentCell = new DataGridCellInfo(newTransaction, dateColumn);
+                    dg.ScrollIntoView(newTransaction, dateColumn);
+                    dg.UpdateLayout();
+                    dg.BeginEdit();
+                })
+            );
         }
 
         public void CommitPendingEdits()
@@ -148,6 +124,33 @@ namespace CashProjection.ViewModels
             }
         }
 
+        [RelayCommand]
+        public void DeleteTransaction(TransactionItemViewModel? transaction)
+        {
+            if (transaction == null)
+                return;
+
+            string amountText = transaction.Deposit.HasValue
+                ? $"deposit of {transaction.Deposit:C}"
+                : transaction.Payment.HasValue
+                    ? $"payment of {transaction.Payment:C}"
+                    : "amount of $0";
+
+            var result = MessageBox.Show(
+                $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
+                "Confirm Delete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question
+            );
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _transactions.Remove(transaction);
+                IsDirty = true;
+            }
+        }
+
+        [RelayCommand]
         public void FocusInitialBalance()
         {
             Application.Current?.Dispatcher.BeginInvoke(
@@ -166,7 +169,6 @@ namespace CashProjection.ViewModels
             );
         }
 
-        // Focus a specific transaction row and place caret into a useful cell editor
         public void FocusTransaction(TransactionItemViewModel item)
         {
             if (item is null)
@@ -182,11 +184,9 @@ namespace CashProjection.ViewModels
                     if (fe.FindName("TransactionsGrid") is not DataGrid dg)
                         return;
 
-                    // Ensure pending edits are committed before changing selection
                     dg.CommitEdit(DataGridEditingUnit.Cell, true);
                     dg.CommitEdit(DataGridEditingUnit.Row, true);
 
-                    // Select item and choose a target column: prefer Deposit, then Payment, else Name
                     dg.SelectedItem = item;
                     var targetColumn = ChooseTargetColumn(dg, item) ?? dg.Columns.FirstOrDefault();
                     if (targetColumn is null)
@@ -195,19 +195,14 @@ namespace CashProjection.ViewModels
                         return;
                     }
 
-                    // Make the desired cell current and visible
                     dg.CurrentCell = new DataGridCellInfo(item, targetColumn);
                     dg.ScrollIntoView(item, targetColumn);
                     dg.UpdateLayout();
-
-                    // Begin edit so the editing element (TextBox) is in the visual tree
                     dg.BeginEdit();
 
-                    // Try to focus the editing TextBox (or any focusable element) inside the cell
                     var cellContent = targetColumn.GetCellContent(item);
                     if (cellContent != null)
                     {
-                        // If currently showing the display template, switch editing for template columns
                         if (FindVisualChild<TextBox>(cellContent) is TextBox editorTb)
                         {
                             editorTb.Focus();
@@ -216,7 +211,6 @@ namespace CashProjection.ViewModels
                         }
                         else
                         {
-                            // Fallback: place keyboard focus on the cell content
                             if (cellContent is Control ctrl)
                             {
                                 ctrl.Focus();
@@ -226,7 +220,6 @@ namespace CashProjection.ViewModels
                     }
                     else
                     {
-                        // Last resort: focus the row itself
                         if (dg.ItemContainerGenerator.ContainerFromItem(item) is DataGridRow row)
                         {
                             row.IsSelected = true;
@@ -238,7 +231,8 @@ namespace CashProjection.ViewModels
             );
         }
 
-        public void PushForward(TransactionItemViewModel transaction)
+        [RelayCommand]
+        public void PushForward(TransactionItemViewModel? transaction)
         {
             if (transaction == null)
                 return;
@@ -254,9 +248,7 @@ namespace CashProjection.ViewModels
                 if (lastTransaction is not null)
                 {
                     transaction.TransactionDate = lastTransaction.TransactionDate.AddDays(14);
-                    MarkDirty();
-                    // copilot suggests removing this, which I think is bullshit
-                    //ResortAndRecalculate();
+                    IsDirty = true;
                     return;
                 }
             }
@@ -270,114 +262,38 @@ namespace CashProjection.ViewModels
                 _ => transaction.TransactionDate,
             };
 
-            MarkDirty();
-            // copilot suggests removing this, which I think is bullshit
-            //ResortAndRecalculate();
+            IsDirty = true;
         }
 
-        public void AddNew()
-        {
-            var newTransaction = new TransactionItemViewModel(new Transaction
-            {
-                Name = string.Empty,
-                TransactionDate = DateTime.Today,
-                Deposit = null,
-                Payment = null,
-                Periodicity = Periodicity.Monthly
-            });
-
-            _transactions.Add(newTransaction);
-            MarkDirty();
-
-            // Focus the new transaction's Date field after it's added to the grid
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(() =>
-                {
-                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
-                        return;
-
-                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
-                        return;
-
-                    // Select the new item and focus the Date column
-                    dg.SelectedItem = newTransaction;
-                    var dateColumn = GetColumnByHeader(dg, "Date") ?? dg.Columns.FirstOrDefault();
-                    if (dateColumn is null)
-                    {
-                        dg.Focus();
-                        return;
-                    }
-
-                    dg.CurrentCell = new DataGridCellInfo(newTransaction, dateColumn);
-                    dg.ScrollIntoView(newTransaction, dateColumn);
-                    dg.UpdateLayout();
-                    dg.BeginEdit();
-                })
-            );
-        }
-
-        public void DeleteTransaction(TransactionItemViewModel transaction)
-        {
-            if (transaction == null)
-                return;
-
-            // Format the amount (either deposit or payment)
-            string amountText = transaction.Deposit.HasValue
-                ? $"deposit of {transaction.Deposit:C}"
-                : transaction.Payment.HasValue
-                    ? $"payment of {transaction.Payment:C}"
-                    : "amount of $0";
-
-            var result = MessageBox.Show(
-                $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
-                "Confirm Delete",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question
-            );
-
-            if (result == MessageBoxResult.Yes)
-            {
-                _transactions.Remove(transaction);
-                MarkDirty();
-            }
-        }
-
+        [RelayCommand]
         public void Save()
         {
             PersistenceService.Save(this);
             IsDirty = false;
         }
 
-        // Caliburn-friendly action method (can be invoked from cal:Message.Attach or wired to UI)
+        public void SetViewReference(FrameworkElement view)
+        {
+            _viewRef = new WeakReference<FrameworkElement>(view);
+        }
+
+        [RelayCommand]
         public void ToggleSearch()
         {
             IsSearchOpen = !IsSearchOpen;
         }
 
-        protected override void OnViewReady(object view)
-        {
-            base.OnViewReady(view);
-            if (view is FrameworkElement fe)
-                _viewRef = new WeakReference<FrameworkElement>(fe);
-        }
-
-        private static DataGridColumn? ChooseTargetColumn(
-                    DataGrid dg,
-                    TransactionItemViewModel item
-                )
+        private static DataGridColumn? ChooseTargetColumn(DataGrid dg, TransactionItemViewModel item)
         {
             if (item.Deposit.HasValue)
                 return GetColumnByHeader(dg, "Deposit");
             if (item.Payment.HasValue)
                 return GetColumnByHeader(dg, "Payment");
 
-            // Default to Name column for keyboard navigation across the row
             return GetColumnByHeader(dg, "Name") ?? dg.Columns.FirstOrDefault();
         }
 
-        private static T? FindVisualChild<T>(DependencyObject parent)
-                    where T : DependencyObject
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
         {
             if (parent == null)
                 return null;
@@ -395,18 +311,16 @@ namespace CashProjection.ViewModels
         }
 
         private static DataGridColumn? GetColumnByHeader(DataGrid dg, string header) =>
-                    dg.Columns.FirstOrDefault(c =>
-                        c.Header is string s && s.Equals(header, StringComparison.CurrentCultureIgnoreCase)
-                    );
+            dg.Columns.FirstOrDefault(c =>
+                c.Header is string s && s.Equals(header, StringComparison.CurrentCultureIgnoreCase)
+            );
 
         private void AddSampleTransactions()
         {
-            // Load sample data from SampleData.json (fallback in PersistenceService already handles this)
             var sample = PersistenceService.Load();
 
             if (sample is null)
             {
-                // If no sample data exists, initialize with empty state
                 InitialBalance = 0m;
                 AccountName = "My Account";
                 return;
@@ -429,15 +343,11 @@ namespace CashProjection.ViewModels
             IsDirty = false;
         }
 
-        // Sort by date asc, then payments before deposits, then name and amount for determinism.
         private void ApplySort()
         {
             var view = CollectionViewSource.GetDefaultView(Transactions);
 
-            if (
-                view is IEditableCollectionView editable
-                && (editable.IsEditingItem || editable.IsAddingNew)
-            )
+            if (view is IEditableCollectionView editable && (editable.IsEditingItem || editable.IsAddingNew))
             {
                 Application.Current?.Dispatcher.BeginInvoke(
                     DispatcherPriority.Background,
@@ -474,11 +384,8 @@ namespace CashProjection.ViewModels
 
         private void ApplyState(AccountState state)
         {
-            _accountName = state.AccountName;
-            NotifyOfPropertyChange(nameof(AccountName));
-
-            _initialBalance = state.InitialBalance;
-            NotifyOfPropertyChange(nameof(InitialBalance));
+            AccountName = state.AccountName;
+            InitialBalance = state.InitialBalance;
 
             _transactions.Clear();
             var vms = state
@@ -497,7 +404,6 @@ namespace CashProjection.ViewModels
             IsDirty = false;
         }
 
-        // Focus the search TextBox when opening the panel
         private void FocusSearch()
         {
             Application.Current?.Dispatcher.BeginInvoke(
@@ -516,11 +422,25 @@ namespace CashProjection.ViewModels
             );
         }
 
-        private void MarkDirty() => IsDirty = true;
+        partial void OnAccountNameChanged(string value)
+        {
+            IsDirty = true;
+        }
+
+        partial void OnInitialBalanceChanged(decimal value)
+        {
+            IsDirty = true;
+            ResortAndRecalculate();
+        }
+
+        partial void OnIsSearchOpenChanged(bool value)
+        {
+            if (value)
+                FocusSearch();
+        }
 
         private void ResortAndRecalculate()
         {
-            // Re-entrancy guard: prevent cascading recalculations
             if (_isRecalculating)
                 return;
 
@@ -529,8 +449,6 @@ namespace CashProjection.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine("Resorting and recalculating balances...");
 
-                // Use the base collection and sort it directly with our canonical comparer
-                // This avoids CollectionView state issues entirely
                 var ordered = _transactions
                     .OrderBy(t => t, s_comparer)
                     .ToList();
@@ -572,27 +490,22 @@ namespace CashProjection.ViewModels
 
         private void Transaction_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName is nameof(TransactionItemViewModel.Balance))
+            if (e.PropertyName is "Balance")
                 return;
 
-            if (
-                e.PropertyName
+            if (e.PropertyName
                 is nameof(TransactionItemViewModel.Name)
                     or nameof(TransactionItemViewModel.TransactionDate)
                     or nameof(TransactionItemViewModel.Deposit)
                     or nameof(TransactionItemViewModel.Payment)
-                    or nameof(TransactionItemViewModel.Periodicity)
-            )
+                    or nameof(TransactionItemViewModel.Periodicity))
             {
-                MarkDirty();
+                IsDirty = true;
                 ResortAndRecalculate();
             }
         }
 
-        private void Transactions_CollectionChanged(
-            object? sender,
-            NotifyCollectionChangedEventArgs e
-        )
+        private void Transactions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             if (e.NewItems != null)
                 foreach (TransactionItemViewModel t in e.NewItems)
@@ -611,29 +524,8 @@ namespace CashProjection.ViewModels
                 }
             }
 
-            MarkDirty();
+            IsDirty = true;
             ResortAndRecalculate();
-        }
-
-        // Minimal RelayCommand for KeyBinding or other ICommand usage
-        private sealed class RelayCommand : ICommand
-        {
-            private readonly System.Func<bool>? _canExecute;
-            private readonly System.Action _execute;
-
-            public RelayCommand(System.Action execute, System.Func<bool>? canExecute = null)
-            {
-                _execute = execute ?? throw new System.ArgumentNullException(nameof(execute));
-                _canExecute = canExecute;
-            }
-
-            public event EventHandler? CanExecuteChanged;
-
-            public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
-
-            public void Execute(object? parameter) => _execute();
-
-            public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private sealed class TransactionComparer : System.Collections.IComparer, IComparer<TransactionItemViewModel>
