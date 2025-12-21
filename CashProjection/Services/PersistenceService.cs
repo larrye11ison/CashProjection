@@ -18,7 +18,7 @@ public sealed class AccountState
 {
     public string AccountName { get; set; } = string.Empty;
     public decimal InitialBalance { get; set; }
-    public List<TransactionState> Transactions { get; set; } = new();
+    public List<TransactionState> Transactions { get; set; } = [];
 }
 
 public static class PersistenceService

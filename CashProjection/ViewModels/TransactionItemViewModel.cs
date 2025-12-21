@@ -7,13 +7,16 @@ namespace CashProjection.ViewModels
     public sealed partial class TransactionItemViewModel : ObservableObject
     {
         [ObservableProperty]
-        private string _name = string.Empty;
-
-        [ObservableProperty]
-        private DateTime _transactionDate = DateTime.Today;
+        private decimal _balance;
 
         [ObservableProperty]
         private decimal? _deposit;
+
+        [ObservableProperty]
+        private bool _isLowestNearNow;
+
+        [ObservableProperty]
+        private string _name = string.Empty;
 
         [ObservableProperty]
         private decimal? _payment;
@@ -22,10 +25,7 @@ namespace CashProjection.ViewModels
         private Periodicity _periodicity;
 
         [ObservableProperty]
-        private decimal _balance;
-
-        [ObservableProperty]
-        private bool _isLowestNearNow;
+        private DateTime _transactionDate = DateTime.Today;
 
         // Default constructor for new transactions
         public TransactionItemViewModel()

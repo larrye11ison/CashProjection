@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using CashProjection.ViewModels;
 
 namespace CashProjection.Views
 {
@@ -7,6 +8,14 @@ namespace CashProjection.Views
         public AccountProjectionView()
         {
             InitializeComponent();
+            
+            Loaded += (s, e) =>
+            {
+                if (DataContext is AccountProjectionViewModel vm)
+                {
+                    vm.SetViewReference(this);
+                }
+            };
         }
     }
 }

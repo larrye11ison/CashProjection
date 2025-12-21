@@ -13,7 +13,7 @@ namespace CashProjection.Views
             if (DataContext is ShellViewModel vm)
             {
                 vm.SetViewReference(this);
-                vm.AccountVM.SetViewReference(this);
+                // Note: AccountVM.SetViewReference is set by AccountProjectionView itself
             }
 
             Closing += (s, e) =>

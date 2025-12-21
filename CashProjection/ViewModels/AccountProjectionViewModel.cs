@@ -23,10 +23,13 @@ namespace CashProjection.ViewModels
         private string _accountName = "My Account";
 
         [ObservableProperty]
-        private decimal _initialBalance = 5000m;
+        private decimal _initialBalance = 0m;
 
         [ObservableProperty]
         private bool _isDirty;
+
+        // Re-entrancy guard for ResortAndRecalculate
+        private bool _isRecalculating;
 
         [ObservableProperty]
         private bool _isSearchOpen;
@@ -36,9 +39,6 @@ namespace CashProjection.ViewModels
 
         private ObservableCollection<TransactionItemViewModel> _transactions;
         private WeakReference<FrameworkElement>? _viewRef;
-
-        // Re-entrancy guard for ResortAndRecalculate
-        private bool _isRecalculating;
 
         public AccountProjectionViewModel()
         {
@@ -71,26 +71,45 @@ namespace CashProjection.ViewModels
             set => SetProperty(ref _transactions, value);
         }
 
-        partial void OnAccountNameChanged(string value)
+        [RelayCommand]
+        public void AddNew()
         {
+            var newTransaction = new TransactionItemViewModel(new Transaction
+            {
+                Name = string.Empty,
+                TransactionDate = DateTime.Today,
+                Deposit = null,
+                Payment = null,
+                Periodicity = Periodicity.Monthly
+            });
+
+            _transactions.Add(newTransaction);
             IsDirty = true;
-        }
 
-        partial void OnInitialBalanceChanged(decimal value)
-        {
-            IsDirty = true;
-            ResortAndRecalculate();
-        }
+            Application.Current?.Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new System.Action(() =>
+                {
+                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
+                        return;
 
-        partial void OnIsSearchOpenChanged(bool value)
-        {
-            if (value)
-                FocusSearch();
-        }
+                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
+                        return;
 
-        public void SetViewReference(FrameworkElement view)
-        {
-            _viewRef = new WeakReference<FrameworkElement>(view);
+                    dg.SelectedItem = newTransaction;
+                    var dateColumn = GetColumnByHeader(dg, "Date") ?? dg.Columns.FirstOrDefault();
+                    if (dateColumn is null)
+                    {
+                        dg.Focus();
+                        return;
+                    }
+
+                    dg.CurrentCell = new DataGridCellInfo(newTransaction, dateColumn);
+                    dg.ScrollIntoView(newTransaction, dateColumn);
+                    dg.UpdateLayout();
+                    dg.BeginEdit();
+                })
+            );
         }
 
         public void CommitPendingEdits()
@@ -102,6 +121,32 @@ namespace CashProjection.ViewModels
                     ecv.CommitEdit();
                 if (ecv.IsAddingNew)
                     ecv.CommitNew();
+            }
+        }
+
+        [RelayCommand]
+        public void DeleteTransaction(TransactionItemViewModel? transaction)
+        {
+            if (transaction == null)
+                return;
+
+            string amountText = transaction.Deposit.HasValue
+                ? $"deposit of {transaction.Deposit:C}"
+                : transaction.Payment.HasValue
+                    ? $"payment of {transaction.Payment:C}"
+                    : "amount of $0";
+
+            var result = MessageBox.Show(
+                $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
+                "Confirm Delete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question
+            );
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _transactions.Remove(transaction);
+                IsDirty = true;
             }
         }
 
@@ -221,77 +266,15 @@ namespace CashProjection.ViewModels
         }
 
         [RelayCommand]
-        public void AddNew()
-        {
-            var newTransaction = new TransactionItemViewModel(new Transaction
-            {
-                Name = string.Empty,
-                TransactionDate = DateTime.Today,
-                Deposit = null,
-                Payment = null,
-                Periodicity = Periodicity.Monthly
-            });
-
-            _transactions.Add(newTransaction);
-            IsDirty = true;
-
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(() =>
-                {
-                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
-                        return;
-
-                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
-                        return;
-
-                    dg.SelectedItem = newTransaction;
-                    var dateColumn = GetColumnByHeader(dg, "Date") ?? dg.Columns.FirstOrDefault();
-                    if (dateColumn is null)
-                    {
-                        dg.Focus();
-                        return;
-                    }
-
-                    dg.CurrentCell = new DataGridCellInfo(newTransaction, dateColumn);
-                    dg.ScrollIntoView(newTransaction, dateColumn);
-                    dg.UpdateLayout();
-                    dg.BeginEdit();
-                })
-            );
-        }
-
-        [RelayCommand]
-        public void DeleteTransaction(TransactionItemViewModel? transaction)
-        {
-            if (transaction == null)
-                return;
-
-            string amountText = transaction.Deposit.HasValue
-                ? $"deposit of {transaction.Deposit:C}"
-                : transaction.Payment.HasValue
-                    ? $"payment of {transaction.Payment:C}"
-                    : "amount of $0";
-
-            var result = MessageBox.Show(
-                $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
-                "Confirm Delete",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question
-            );
-
-            if (result == MessageBoxResult.Yes)
-            {
-                _transactions.Remove(transaction);
-                IsDirty = true;
-            }
-        }
-
-        [RelayCommand]
         public void Save()
         {
             PersistenceService.Save(this);
             IsDirty = false;
+        }
+
+        public void SetViewReference(FrameworkElement view)
+        {
+            _viewRef = new WeakReference<FrameworkElement>(view);
         }
 
         [RelayCommand]
@@ -437,6 +420,23 @@ namespace CashProjection.ViewModels
                     }
                 })
             );
+        }
+
+        partial void OnAccountNameChanged(string value)
+        {
+            IsDirty = true;
+        }
+
+        partial void OnInitialBalanceChanged(decimal value)
+        {
+            IsDirty = true;
+            ResortAndRecalculate();
+        }
+
+        partial void OnIsSearchOpenChanged(bool value)
+        {
+            if (value)
+                FocusSearch();
         }
 
         private void ResortAndRecalculate()
