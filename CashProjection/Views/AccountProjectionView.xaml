@@ -332,7 +332,7 @@
                                         VerticalAlignment="Center"
                                         Margin="0,0,4,0"
                                         Command="{Binding DataContext.PushForwardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
+                                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=Item}"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Push transaction forward by its periodicity">
                                         <materialDesign:PackIcon
@@ -344,7 +344,7 @@
                                     <Button
                                         VerticalAlignment="Center"
                                         Command="{Binding DataContext.DeleteTransactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
+                                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=Item}"
                                         Style="{StaticResource ActionButtonStyle}"
                                         ToolTip="Delete this transaction">
                                         <materialDesign:PackIcon
