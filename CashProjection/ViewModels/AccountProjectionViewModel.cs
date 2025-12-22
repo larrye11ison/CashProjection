@@ -124,7 +124,7 @@ namespace CashProjection.ViewModels
             }
         }
 
-        [RelayCommand]
+        [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
         public void DeleteTransaction(TransactionItemViewModel? transaction)
         {
             if (transaction == null)
@@ -231,7 +231,7 @@ namespace CashProjection.ViewModels
             );
         }
 
-        [RelayCommand]
+        [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
         public void PushForward(TransactionItemViewModel? transaction)
         {
             if (transaction == null)
@@ -568,6 +568,12 @@ namespace CashProjection.ViewModels
                 var bAmt = b.Payment ?? b.Deposit ?? 0m;
                 return aAmt.CompareTo(bAmt);
             }
+        }
+
+        private bool CanDeleteOrPushForward(TransactionItemViewModel? transaction)
+        {
+            // Return false during binding resolution to prevent MS.Internal.NamedObject issues
+            return transaction is not null;
         }
     }
 }
