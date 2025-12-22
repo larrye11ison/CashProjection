@@ -331,10 +331,10 @@
                                     <Button
                                         VerticalAlignment="Center"
                                         Margin="0,0,4,0"
-                                        Command="{Binding DataContext.PushForwardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=Item}"
+                                        Click="PushForwardButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        ToolTip="Push transaction forward by its periodicity">
+                                        ToolTip="Push transaction forward by its periodicity"
+                                        Tag="{Binding}">
                                         <materialDesign:PackIcon
                                             Kind="Forward"
                                             Width="18"
@@ -343,10 +343,10 @@
                                     </Button>
                                     <Button
                                         VerticalAlignment="Center"
-                                        Command="{Binding DataContext.DeleteTransactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=Item}"
+                                        Click="DeleteButton_Click"
                                         Style="{StaticResource ActionButtonStyle}"
-                                        ToolTip="Delete this transaction">
+                                        ToolTip="Delete this transaction"
+                                        Tag="{Binding}">
                                         <materialDesign:PackIcon
                                             Kind="Delete"
                                             Width="18"
