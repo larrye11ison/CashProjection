@@ -1,0 +1,77 @@
+<Window
+    x:Class="CashProjection.Views.ChangeHistoryView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="Change History"
+    Width="900"
+    Height="560"
+    Background="{DynamicResource MaterialDesignPaper}"
+    Foreground="{DynamicResource MaterialDesignBody}"
+    WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock
+            Grid.Row="0"
+            Margin="0,0,0,12"
+            FontSize="16"
+            FontWeight="Bold"
+            Text="Change history (newest first)" />
+
+        <materialDesign:Card Grid.Row="1" Padding="0">
+            <DataGrid
+                AutoGenerateColumns="False"
+                Background="Transparent"
+                CanUserAddRows="False"
+                CanUserDeleteRows="False"
+                GridLinesVisibility="Horizontal"
+                HeadersVisibility="Column"
+                ItemsSource="{Binding Entries}"
+                RowStyle="{StaticResource MaterialDesignDataGridRow}"
+                Style="{StaticResource MaterialDesignDataGrid}">
+                <DataGrid.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn
+                        Width="170"
+                        Binding="{Binding LocalTimestamp, StringFormat='g'}"
+                        Header="When" />
+                    <DataGridTextColumn
+                        Width="110"
+                        Binding="{Binding ChangeType}"
+                        Header="Change" />
+                    <DataGridTextColumn
+                        Width="*"
+                        Binding="{Binding Description}"
+                        Header="What changed" />
+                    <DataGridTemplateColumn Width="220" Header="Actions">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button
+                                        Margin="0,0,4,0"
+                                        Click="UndoButton_Click"
+                                        Content="Undo this"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Tag="{Binding}" />
+                                    <Button
+                                        Click="RollbackButton_Click"
+                                        Content="Roll back to here"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Tag="{Binding}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </materialDesign:Card>
+    </Grid>
+</Window>

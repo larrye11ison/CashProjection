@@ -14,10 +14,6 @@
     Icon="{StaticResource AppIconImage}"
     WindowStartupLocation="CenterScreen">
 
-    <Window.DataContext>
-        <vm:ShellViewModel />
-    </Window.DataContext>
-
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
@@ -25,16 +21,20 @@
     <!--  Keyboard shortcuts  -->
     <Window.InputBindings>
         <KeyBinding
-            Key="B"
-            Command="{Binding FocusInitialBalanceCommand}"
-            Modifiers="Control" />
-        <KeyBinding
             Key="S"
             Command="{Binding SaveCommand}"
             Modifiers="Control" />
         <KeyBinding
             Key="F"
             Command="{Binding OpenFindCommand}"
+            Modifiers="Control" />
+        <KeyBinding
+            Key="Z"
+            Command="{Binding UndoCommand}"
+            Modifiers="Control" />
+        <KeyBinding
+            Key="Y"
+            Command="{Binding RedoCommand}"
             Modifiers="Control" />
     </Window.InputBindings>
 
@@ -45,32 +45,128 @@
                 DockPanel.Dock="Top"
                 Mode="PrimaryMid">
                 <ToolBar Background="Transparent">
+                    <ComboBox
+                        MinWidth="160"
+                        VerticalAlignment="Center"
+                        DisplayMemberPath="Name"
+                        ItemsSource="{Binding Accounts}"
+                        SelectedItem="{Binding SelectedAccount}"
+                        ToolTip="Switch between linked accounts" />
+                    <Separator />
                     <Button
                         Command="{Binding AddNewCommand}"
                         Content="Add New"
+                        IsEnabled="{Binding IsCheckingSelected}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Add a new transaction" />
                     <Separator />
                     <Button
                         Command="{Binding SaveCommand}"
                         Content="Save"
+                        IsEnabled="{Binding IsCheckingSelected}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Save to OneDrive (Ctrl+S)" />
-                    <Button
-                        Command="{Binding FocusInitialBalanceCommand}"
-                        Content="Initial Balance"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Edit the initial balance (Ctrl+B)" />
                     <Separator />
                     <Button
                         Command="{Binding OpenFindCommand}"
                         Content="Find"
+                        IsEnabled="{Binding IsCheckingSelected}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Find transactions (Ctrl+F)" />
+                    <Separator />
+                    <Button
+                        Command="{Binding UndoCommand}"
+                        Content="Undo"
+                        IsEnabled="{Binding IsCheckingSelected}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Undo the most recent change (Ctrl+Z)" />
+                    <Button
+                        Command="{Binding RedoCommand}"
+                        Content="Redo"
+                        IsEnabled="{Binding IsCheckingSelected}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Redo the last undone change (Ctrl+Y)" />
+                    <Button
+                        Command="{Binding OpenHistoryCommand}"
+                        Content="History"
+                        IsEnabled="{Binding IsCheckingSelected}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="View change history" />
+                    <Button
+                        Command="{Binding OpenMatchesCommand}"
+                        Content="Matches"
+                        IsEnabled="{Binding IsCheckingSelected}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Review presumptive matches between projections and real bank transactions" />
+                    <Separator />
+                    <Button
+                        Command="{Binding ReconnectBankCommand}"
+                        Content="Reconnect Bank"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Repair the existing Plaid connection in place (update mode) — never creates a new connection or uses another slot" />
+                    <Button
+                        Command="{Binding OpenPlaidSettingsCommand}"
+                        Content="Plaid Settings"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Switch between Sandbox and Production, and manage Production credentials" />
+                    <Button
+                        Command="{Binding RunMatchingTestCommand}"
+                        Content="Test Matching (Dev)"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Dev-only: score projection items against the downloaded Chevron CSV"
+                        Visibility="{Binding IsDebugBuild, Converter={StaticResource BoolToVis}}" />
+                    <Button
+                        Command="{Binding SimulateReconnectNeededCommand}"
+                        Content="Simulate Reconnect Needed (Dev)"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Dev-only, Sandbox-only: forces ITEM_LOGIN_REQUIRED so the Reconnect Bank flow can be tested safely"
+                        Visibility="{Binding IsDebugBuild, Converter={StaticResource BoolToVis}}" />
                 </ToolBar>
             </materialDesign:ColorZone>
 
-            <views:AccountProjectionView DataContext="{Binding AccountVM}" />
+            <materialDesign:ColorZone
+                Padding="12,10"
+                DockPanel.Dock="Bottom"
+                Mode="PrimaryMid">
+                <DockPanel LastChildFill="True">
+                    <ProgressBar
+                        Width="120"
+                        Height="4"
+                        Margin="12,0,0,0"
+                        DockPanel.Dock="Right"
+                        IsIndeterminate="{Binding StatusVM.IsBusy}"
+                        Visibility="{Binding StatusVM.IsBusy, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="13"
+                        FontWeight="Bold"
+                        Text="{Binding StatusVM.CurrentMessage}" />
+                </DockPanel>
+            </materialDesign:ColorZone>
+
+            <!--
+                A DockPanel only gives "fill" treatment to its LAST child;
+                an earlier, un-docked sibling just claims its own desired
+                width/height regardless of Visibility, which starves
+                whichever view comes after it. Wrapping both in one Grid
+                cell makes them properly overlap in the same slot so
+                toggling Visibility actually swaps which one renders.
+
+                Visibility is set on a plain wrapper Grid, NOT on the view
+                itself — setting DataContext and a Visibility binding on
+                the SAME element means the Visibility binding resolves
+                against the element's own (just-overridden) DataContext,
+                not the outer ShellViewModel, so it silently fails and
+                falls back to the framework default (Visible) forever.
+            -->
+            <Grid>
+                <Grid Visibility="{Binding IsCheckingSelected, Converter={StaticResource BoolToVis}}">
+                    <views:AccountProjectionView DataContext="{Binding AccountVM}" />
+                </Grid>
+                <Grid Visibility="{Binding IsOtherAccountSelected, Converter={StaticResource BoolToVis}}">
+                    <views:AccountTransactionsView DataContext="{Binding OtherAccountVM}" />
+                </Grid>
+            </Grid>
         </DockPanel>
 
         <!--  Modal Find overlay  -->
@@ -182,7 +278,7 @@
                                 Command="{Binding CancelFindCommand}"
                                 Content="Cancel"
                                 IsCancel="True"
-                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                                Style="{StaticResource MaterialDesignRaisedButton}" />
                         </StackPanel>
                     </Grid>
                 </materialDesign:Card>

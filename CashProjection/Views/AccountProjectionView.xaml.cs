@@ -9,7 +9,7 @@ namespace CashProjection.Views
         public AccountProjectionView()
         {
             InitializeComponent();
-            
+
             Loaded += (s, e) =>
             {
                 if (DataContext is AccountProjectionViewModel vm)
@@ -21,8 +21,8 @@ namespace CashProjection.Views
 
         private void PushForwardButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button && 
-                button.Tag is TransactionItemViewModel transaction &&
+            if (sender is Button button &&
+                button.Tag is ProjectionItemViewModel transaction &&
                 DataContext is AccountProjectionViewModel vm)
             {
                 vm.PushForwardCommand.Execute(transaction);
@@ -31,12 +31,20 @@ namespace CashProjection.Views
 
         private void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button && 
-                button.Tag is TransactionItemViewModel transaction &&
+            if (sender is Button button &&
+                button.Tag is ProjectionItemViewModel transaction &&
                 DataContext is AccountProjectionViewModel vm)
             {
                 vm.DeleteTransactionCommand.Execute(transaction);
             }
+        }
+
+        // Real bank-transaction rows are read-only facts from Plaid — block
+        // editing on any column, regardless of which cell was double-clicked.
+        private void TransactionsGrid_BeginningEdit(object? sender, DataGridBeginningEditEventArgs e)
+        {
+            if (e.Row.Item is ProjectionItemViewModel { IsReadOnly: true })
+                e.Cancel = true;
         }
     }
 }

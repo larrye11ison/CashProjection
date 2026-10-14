@@ -6,15 +6,13 @@ namespace CashProjection.Views
 {
     public partial class ShellView : Window
     {
-        public ShellView()
+        public ShellView(ShellViewModel vm)
         {
             InitializeComponent();
-            
-            if (DataContext is ShellViewModel vm)
-            {
-                vm.SetViewReference(this);
-                // Note: AccountVM.SetViewReference is set by AccountProjectionView itself
-            }
+
+            DataContext = vm;
+            vm.SetViewReference(this);
+            // Note: AccountVM.SetViewReference is set by AccountProjectionView itself
 
             Closing += (s, e) =>
             {

@@ -1,0 +1,1 @@
+ALTER TABLE ChangeHistory ADD COLUMN BatchId TEXT NULL;

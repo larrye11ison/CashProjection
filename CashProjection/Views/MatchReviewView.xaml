@@ -1,0 +1,89 @@
+<Window
+    x:Class="CashProjection.Views.MatchReviewView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="Review Presumptive Matches"
+    Width="820"
+    Height="520"
+    Background="{DynamicResource MaterialDesignPaper}"
+    Foreground="{DynamicResource MaterialDesignBody}"
+    WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock
+            Grid.Row="0"
+            Margin="0,0,0,12"
+            FontSize="16"
+            FontWeight="Bold"
+            Text="Presumptive matches found between your projections and real bank transactions" />
+
+        <materialDesign:Card Grid.Row="1" Padding="0">
+            <DataGrid
+                AutoGenerateColumns="False"
+                Background="Transparent"
+                CanUserAddRows="False"
+                CanUserDeleteRows="False"
+                GridLinesVisibility="Horizontal"
+                HeadersVisibility="Column"
+                ItemsSource="{Binding PresumptiveMatches}"
+                RowStyle="{StaticResource MaterialDesignDataGridRow}"
+                Style="{StaticResource MaterialDesignDataGrid}">
+                <DataGrid.Resources>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn
+                        Width="110"
+                        Binding="{Binding ProjectionItem.TransactionDate, StringFormat=d}"
+                        Header="Projected Date" />
+                    <DataGridTextColumn
+                        Width="160"
+                        Binding="{Binding ProjectionItem.Name}"
+                        Header="Projection Item" />
+                    <DataGridTextColumn
+                        Width="110"
+                        Binding="{Binding BankTransaction.TxnDate, StringFormat=d}"
+                        Header="Bank Date" />
+                    <DataGridTextColumn
+                        Width="*"
+                        Binding="{Binding BankTransaction.Description}"
+                        Header="Bank Description" />
+                    <DataGridTextColumn
+                        Width="100"
+                        Binding="{Binding BankTransaction.Amount, StringFormat=C2}"
+                        Header="Amount" />
+                    <DataGridTextColumn
+                        Width="60"
+                        Binding="{Binding Match.Score}"
+                        Header="Score" />
+                    <DataGridTemplateColumn Width="150" Header="Decision">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button
+                                        Margin="0,0,4,0"
+                                        Click="AcceptButton_Click"
+                                        Content="Accept"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Tag="{Binding}" />
+                                    <Button
+                                        Click="RejectButton_Click"
+                                        Content="Reject"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Tag="{Binding}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </materialDesign:Card>
+    </Grid>
+</Window>

@@ -20,6 +20,16 @@
             TargetType="DataGridRow">
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Style.Triggers>
+                <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignDivider}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsMatched}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SecondaryHueLightBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsOverdueUnmatched}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignWarningBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesignOnWarningBrush}" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding Balance, Converter={StaticResource BalanceToWarningConverter}}" Value="True">
                     <Setter Property="Background" Value="{DynamicResource MaterialDesignWarningBrush}" />
                     <Setter Property="Foreground" Value="{DynamicResource MaterialDesignOnWarningBrush}" />
@@ -103,18 +113,13 @@
                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
                     Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}" />
 
-                <TextBox
-                    x:Name="InitialBalanceTextBox"
+                <TextBlock
                     Grid.Column="1"
-                    Width="200"
-                    behaviors:SelectAllOnFocusBehavior.IsEnabled="True"
-                    materialDesign:HintAssist.Hint="Initial Balance"
-                    CaretBrush="{DynamicResource MaterialDesignBody}"
-                    FontSize="16"
-                    SelectionBrush="{DynamicResource SecondaryHueMidBrush}"
-                    SelectionOpacity="0.45"
-                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                    Text="{Binding InitialBalance, StringFormat=C2, UpdateSourceTrigger=LostFocus}" />
+                    VerticalAlignment="Center"
+                    FontSize="14"
+                    Foreground="{DynamicResource MaterialDesignBodyLight}"
+                    Text="{Binding CurrentBalanceDisplay}"
+                    ToolTip="The real balance reported by your bank via Plaid — not editable here." />
             </Grid>
         </materialDesign:Card>
 
@@ -126,7 +131,8 @@
                 materialDesign:DataGridAssist.ColumnHeaderPadding="10,6"
                 AutoGenerateColumns="False"
                 Background="Transparent"
-                CanUserAddRows="True"
+                BeginningEdit="TransactionsGrid_BeginningEdit"
+                CanUserAddRows="False"
                 CanUserDeleteRows="False"
                 CanUserSortColumns="False"
                 GridLinesVisibility="None"
@@ -281,6 +287,7 @@
                             <Style TargetType="TextBlock">
                                 <Setter Property="TextAlignment" Value="Right" />
                                 <Setter Property="VerticalAlignment" Value="Center" />
+                                <Setter Property="ToolTip" Value="{Binding BalanceSourceDescription}" />
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                         <DataGridTextColumn.CellStyle>
@@ -315,6 +322,39 @@
                         </DataGridTemplateColumn.CellStyle>
                     </DataGridTemplateColumn>
 
+                    <!--  Match-linked / amount-drift flags  -->
+                    <DataGridTemplateColumn
+                        Width="70"
+                        Header="Flags"
+                        IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                    <materialDesign:PackIcon
+                                        Width="16"
+                                        Height="16"
+                                        Margin="0,0,4,0"
+                                        Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
+                                        Kind="LinkVariant"
+                                        ToolTip="{Binding MatchTooltip}"
+                                        Visibility="{Binding IsMatched, Converter={StaticResource BoolToVis}}" />
+                                    <materialDesign:PackIcon
+                                        Width="16"
+                                        Height="16"
+                                        Foreground="{DynamicResource MaterialDesignWarningBrush}"
+                                        Kind="AlertCircleOutline"
+                                        ToolTip="The matched real amount differs from the projected estimate by more than the configured threshold."
+                                        Visibility="{Binding HasAmountDrift, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellStyle>
+                            <Style BasedOn="{StaticResource BaseDataGridCellStyle}" TargetType="DataGridCell">
+                                <Setter Property="IsTabStop" Value="False" />
+                            </Style>
+                        </DataGridTemplateColumn.CellStyle>
+                    </DataGridTemplateColumn>
+
                     <!--  Periodicity (centered + compact)  -->
                     <DataGridComboBoxColumn
                         Width="140"
@@ -327,7 +367,10 @@
                     <DataGridTemplateColumn Width="140" Header="Actions">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Visibility="{Binding IsEditable, Converter={StaticResource BoolToVis}}">
                                     <Button
                                         VerticalAlignment="Center"
                                         Margin="0,0,4,0"
