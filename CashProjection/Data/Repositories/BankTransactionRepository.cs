@@ -16,7 +16,7 @@ namespace CashProjection.Data.Repositories
 
             using var cmd = _db.Connection.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId
+                SELECT Id, AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId, VendorName
                 FROM BankTransactions
                 WHERE AccountId = $accountId
                 ORDER BY TxnDate DESC, Id DESC;
@@ -34,7 +34,7 @@ namespace CashProjection.Data.Repositories
         {
             using var cmd = _db.Connection.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId
+                SELECT Id, AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId, VendorName
                 FROM BankTransactions WHERE Id = $id;
                 """;
             cmd.Parameters.AddWithValue("$id", id);
@@ -47,9 +47,9 @@ namespace CashProjection.Data.Repositories
             using var cmd = _db.Connection.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO BankTransactions
-                    (AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId)
+                    (AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId, VendorName)
                 VALUES
-                    ($accountId, $plaidTransactionId, $txnDate, $description, $amount, $pending, $category, $importedAtUtc, $runningBalance, $plaidAccountId)
+                    ($accountId, $plaidTransactionId, $txnDate, $description, $amount, $pending, $category, $importedAtUtc, $runningBalance, $plaidAccountId, $vendorName)
                 ON CONFLICT(PlaidTransactionId) DO UPDATE SET
                     TxnDate = excluded.TxnDate,
                     Description = excluded.Description,
@@ -57,7 +57,8 @@ namespace CashProjection.Data.Repositories
                     Pending = excluded.Pending,
                     Category = excluded.Category,
                     RunningBalance = excluded.RunningBalance,
-                    PlaidAccountId = excluded.PlaidAccountId;
+                    PlaidAccountId = excluded.PlaidAccountId,
+                    VendorName = excluded.VendorName;
                 """;
             cmd.Parameters.AddWithValue("$accountId", txn.AccountId);
             cmd.Parameters.AddWithValue("$plaidTransactionId", txn.PlaidTransactionId);
@@ -71,6 +72,7 @@ namespace CashProjection.Data.Repositories
                 "$runningBalance",
                 txn.RunningBalance.HasValue ? txn.RunningBalance.Value.ToString(CultureInfo.InvariantCulture) : (object)DBNull.Value);
             cmd.Parameters.AddWithValue("$plaidAccountId", (object?)txn.PlaidAccountId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$vendorName", (object?)txn.VendorName ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 
@@ -95,6 +97,7 @@ namespace CashProjection.Data.Repositories
             ImportedAtUtc = DateTime.Parse(reader.GetString(8), null, DateTimeStyles.RoundtripKind),
             RunningBalance = reader.IsDBNull(9) ? null : decimal.Parse(reader.GetString(9), CultureInfo.InvariantCulture),
             PlaidAccountId = reader.IsDBNull(10) ? null : reader.GetString(10),
+            VendorName = reader.IsDBNull(11) ? null : reader.GetString(11),
         };
     }
 }

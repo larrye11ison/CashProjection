@@ -22,8 +22,7 @@ A modern WPF desktop application for managing and projecting cash flow over time
 
 ### ? Productivity Features
 - **Keyboard Shortcuts**:
-  - `Ctrl+B` - Focus on Initial Balance field
-  - `Ctrl+S` - Save to OneDrive/Documents
+  - `Ctrl+S` - Save
   - `Ctrl+F` - Find transactions
 - **Quick Actions**:
   - Push Forward: Move recurring transactions by their periodicity
@@ -32,9 +31,7 @@ A modern WPF desktop application for managing and projecting cash flow over time
 - **Smart Search**: Find transactions by name with instant results and keyboard navigation
 
 ### ?? Data Management
-- Automatic save to OneDrive (with fallback to Documents folder)
-- JSON-based storage format
-- Sample data included for quick start
+- Local SQLite database, stored in OneDrive (with fallback to Documents folder)
 - Auto-save prompt on exit if changes are pending
 
 ## Tech Stack
@@ -73,10 +70,9 @@ A modern WPF desktop application for managing and projecting cash flow over time
 
 ### First Launch
 
-On first launch, the application will load sample transaction data. You can:
-- Edit the account name and initial balance
-- Add, modify, or delete transactions
-- Use `Ctrl+S` to save your data to OneDrive/Documents
+On first launch, you'll be walked through connecting a bank account via Plaid — this is required before the app shows anything, since it's how the account balance and real transactions get in. After that, you can:
+- Add, modify, or delete recurring projection items
+- Use `Ctrl+S` to save your changes
 
 ## Usage
 
@@ -105,61 +101,10 @@ Use the **Push Forward** button (?) to automatically advance a transaction by it
 
 ## Architecture
 
-### Project Structure
-
-```
-CashProjection/
-??? Assets/              # Application icons and resources
-??? Behaviors/           # WPF attached behaviors
-?   ??? GridViewColumnResize.cs
-?   ??? SelectAllOnFocusBehavior.cs
-??? Models/              # Domain models and converters
-?   ??? Transaction.cs
-?   ??? Converters.cs
-?   ??? Periodicity.cs (enum)
-??? Services/            # Business logic and persistence
-?   ??? PersistenceService.cs
-?   ??? TransactionParser.cs
-??? ViewModels/          # MVVM ViewModels
-?   ??? ShellViewModel.cs
-?   ??? AccountProjectionViewModel.cs
-?   ??? TransactionItemViewModel.cs
-??? Views/               # WPF Views
-?   ??? ShellView.xaml
-?   ??? AccountProjectionView.xaml
-??? App.xaml             # Application entry point
-```
-
 ### Key Design Patterns
 
 - **MVVM**: Clean separation between UI and business logic
 - **MVVM Toolkit**: Using `[ObservableProperty]` and `[RelayCommand]` for boilerplate reduction
-- **Repository Pattern**: `PersistenceService` handles all data storage
-- **DTO Pattern**: `Transaction` model separates data transfer from ViewModels
-
-## Data Storage
-
-Transaction data is stored in JSON format at:
-- Primary: `%OneDrive%\CashProjection.json`
-- Fallback: `%USERPROFILE%\Documents\CashProjection.json`
-
-### Data Format
-
-```json
-{
-  "AccountName": "My Account",
-  "InitialBalance": 5000.00,
-  "Transactions": [
-    {
-      "Name": "Salary",
-      "TransactionDate": "2025-01-01",
-      "Deposit": 3000.00,
-      "Payment": null,
-      "Periodicity": "Monthly"
-    }
-  ]
-}
-```
 
 ## Contributing
 

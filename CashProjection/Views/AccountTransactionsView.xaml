@@ -1,8 +1,7 @@
 <UserControl
     x:Class="CashProjection.Views.AccountTransactionsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
@@ -14,27 +13,12 @@
     </UserControl.Resources>
 
     <DockPanel Margin="12">
-        <materialDesign:Card
-            Padding="16,12"
-            DockPanel.Dock="Top"
-            UniformCornerRadius="6">
-            <StackPanel>
-                <TextBlock
-                    FontSize="18"
-                    FontWeight="Bold"
-                    Text="{Binding AccountName}" />
-                <TextBlock
-                    Margin="0,4,0,0"
-                    FontSize="14"
-                    Text="{Binding BalanceDisplay}" />
-            </StackPanel>
-        </materialDesign:Card>
-
         <DataGrid
-            Margin="0,12,0,0"
             AutoGenerateColumns="False"
             CanUserAddRows="False"
             CanUserDeleteRows="False"
+            GridLinesVisibility="Horizontal"
+            HorizontalGridLinesBrush="{DynamicResource MaterialDesignDivider}"
             IsReadOnly="True"
             ItemsSource="{Binding Transactions}"
             RowStyle="{StaticResource MaterialDesignDataGridRow}"
@@ -44,10 +28,26 @@
                     Width="110"
                     Binding="{Binding Date, StringFormat=d}"
                     Header="Date" />
-                <DataGridTextColumn
-                    Width="*"
-                    Binding="{Binding Description}"
-                    Header="Description" />
+                <DataGridTemplateColumn Width="*" Header="Description">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <!--
+                                Vendor name on top, raw bank description below —
+                                only when they actually differ; otherwise this
+                                collapses to a single PrimaryDisplayName line.
+                            -->
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding PrimaryDisplayName}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Opacity="0.65"
+                                    Text="{Binding Description}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Visibility="{Binding HasDistinctVendorName, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn
                     Width="120"
                     Binding="{Binding Amount, StringFormat={}{0:C2}}"

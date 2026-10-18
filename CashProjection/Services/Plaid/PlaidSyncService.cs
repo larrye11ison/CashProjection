@@ -13,6 +13,7 @@ namespace CashProjection.Services.Plaid
         private readonly PlaidSettingsService _settings;
         private readonly BankTransactionRepository _bankTransactionRepo;
         private readonly AccountRepository _accountRepo;
+        private readonly UnseenTransactionsTracker _unseenTracker;
         private readonly StatusBarViewModel? _statusVM;
 
         public PlaidSyncService(
@@ -21,6 +22,7 @@ namespace CashProjection.Services.Plaid
             PlaidSettingsService settings,
             BankTransactionRepository bankTransactionRepo,
             AccountRepository accountRepo,
+            UnseenTransactionsTracker unseenTracker,
             StatusBarViewModel? statusVM = null)
         {
             _clientFactory = clientFactory;
@@ -28,6 +30,7 @@ namespace CashProjection.Services.Plaid
             _settings = settings;
             _bankTransactionRepo = bankTransactionRepo;
             _accountRepo = accountRepo;
+            _unseenTracker = unseenTracker;
             _statusVM = statusVM;
         }
 
@@ -112,6 +115,15 @@ namespace CashProjection.Services.Plaid
                     {
                         AccessToken = accessToken,
                         Cursor = string.IsNullOrEmpty(cursor) ? null : cursor,
+                        // Without this, Plaid omits the raw bank string
+                        // entirely — Name/MerchantName are Plaid's own
+                        // cleaned-up versions, which can drop real detail
+                        // the fuzzy matcher needs (e.g. "AT&T" instead of
+                        // the bank's own "BILL PAY AT&T Mobility").
+                        Options = new Going.Plaid.Entity.TransactionsSyncRequestOptions
+                        {
+                            IncludeOriginalDescription = true,
+                        },
                     });
 
                     // Going.Plaid does not throw for Plaid-level API errors —
@@ -136,6 +148,15 @@ namespace CashProjection.Services.Plaid
                             $"Plaid error during sync: {response.Error.ErrorCode} — {response.Error.ErrorMessage}");
                     }
 
+                    // Only transactions.Added are genuinely new — Modified
+                    // covers things like a pending transaction posting,
+                    // which the user has plausibly already seen — so only
+                    // Added should light up the "unseen" indicator.
+                    var addedIds = new HashSet<string>(
+                        response.Added
+                            .Where(a => !string.IsNullOrEmpty(a.TransactionId))
+                            .Select(a => a.TransactionId!));
+
                     foreach (var t in response.Added.Concat(response.Modified))
                     {
                         if (string.IsNullOrEmpty(t.TransactionId))
@@ -148,16 +169,34 @@ namespace CashProjection.Services.Plaid
                         if (t.AccountId is null || !accountsByPlaidId.TryGetValue(t.AccountId, out var account))
                             continue;
 
+                        if (addedIds.Contains(t.TransactionId))
+                            _unseenTracker.RegisterNewTransactions(account.Id, 1);
+
                         _bankTransactionRepo.Upsert(new BankTransaction
                         {
                             AccountId = account.Id,
                             PlaidTransactionId = t.TransactionId,
                             PlaidAccountId = t.AccountId,
                             TxnDate = t.Date.HasValue ? t.Date.Value.ToDateTime(TimeOnly.MinValue) : DateTime.Today,
-                            // Name is obsolete per Plaid's docs but is still the
-                            // only fallback when MerchantName isn't populated.
+                            // OriginalDescription is the bank's own raw text
+                            // (requires Options.IncludeOriginalDescription,
+                            // set above) — prefer it over Plaid's cleaned-up
+                            // Name/MerchantName, which can strip detail the
+                            // fuzzy matcher relies on. Not every transaction
+                            // carries one (depends on the institution), so
+                            // fall back to the cleaned-up fields when it's
+                            // missing. Name is obsolete per Plaid's docs but
+                            // is still the last-resort fallback when neither
+                            // OriginalDescription nor MerchantName is set.
+                            //
+                            // VendorName is Plaid's cleaned-up name on its
+                            // own, independent of OriginalDescription — kept
+                            // as a separate column so the UI can show both
+                            // when they diverge, and so FuzzyMatchingService
+                            // can deliberately match on Description alone.
 #pragma warning disable CS0612
-                            Description = t.MerchantName ?? t.Name ?? "(unknown)",
+                            Description = t.OriginalDescription ?? t.MerchantName ?? t.Name ?? "(unknown)",
+                            VendorName = t.MerchantName ?? t.Name,
 #pragma warning restore CS0612
                             Amount = t.Amount ?? 0m,
                             Pending = t.Pending ?? false,

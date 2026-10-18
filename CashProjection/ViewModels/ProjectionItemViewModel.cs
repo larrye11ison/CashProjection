@@ -19,6 +19,8 @@ namespace CashProjection.ViewModels
         private bool _isLowestNearNow;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(HasDistinctVendorName))]
+        [NotifyPropertyChangedFor(nameof(PrimaryDisplayName))]
         private string _name = string.Empty;
 
         [ObservableProperty]
@@ -74,6 +76,26 @@ namespace CashProjection.ViewModels
         public bool IsEditable => !IsReadOnly;
         public int? BankTransactionId { get; private init; }
 
+        // Bank-row-only (null for editable projection items): Plaid's
+        // cleaned-up merchant name, kept separate from Name (which holds
+        // the bank's own raw description text for a bank row). Set once at
+        // construction and never mutated afterward, since bank rows aren't
+        // editable.
+        public string? VendorName { get; private init; }
+
+        // True only when this is a bank row AND its vendor name actually
+        // differs from the raw description — the grid cell shows both
+        // lines only in that case, collapsing to a single line otherwise
+        // (including for every ordinary editable projection item, where
+        // VendorName is always null).
+        public bool HasDistinctVendorName =>
+            !string.IsNullOrWhiteSpace(VendorName)
+            && !string.Equals(VendorName.Trim(), Name.Trim(), StringComparison.Ordinal);
+
+        // The grid's primary (top-line) text for this row — the vendor name
+        // when there is one, otherwise just Name.
+        public string PrimaryDisplayName => string.IsNullOrWhiteSpace(VendorName) ? Name : VendorName;
+
         // True when Balance was set directly from Plaid's own running_balance
         // field (the bank's reported balance after this transaction) — an
         // authoritative fact that ResortAndRecalculate must never overwrite.
@@ -116,6 +138,7 @@ namespace CashProjection.ViewModels
                 EffectiveSortDate = txn.TxnDate,
                 Periodicity = Periodicity.NotApplicable,
                 HasKnownBalance = txn.RunningBalance.HasValue,
+                VendorName = txn.VendorName,
             };
             // Plaid convention: positive amount = payment (money out), negative = deposit (money in).
             if (txn.Amount > 0)
@@ -128,7 +151,15 @@ namespace CashProjection.ViewModels
             return vm;
         }
 
-        // Convert to model for saving
+        // Convert to model for saving. Uses the tracked UpdatedAtUtc as-is
+        // rather than stamping DateTime.UtcNow here — this is called both
+        // to build comparison snapshots (before/after a possible edit) and
+        // to build the model actually persisted, and stamping "now" on
+        // every call made every snapshot differ from the last regardless of
+        // whether anything was actually edited. Callers that represent a
+        // real mutation (Save's detected-change branch, PushForward, match
+        // acceptance) are responsible for bumping UpdatedAtUtc themselves
+        // before calling this.
         public ProjectionItem ToModel() => new ProjectionItem
         {
             Id = Id,
@@ -140,7 +171,7 @@ namespace CashProjection.ViewModels
             Periodicity = Periodicity,
             MatchText = MatchText,
             NeedsReview = NeedsReview,
-            UpdatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = UpdatedAtUtc,
         };
 
         // Handle the special business logic for Deposit/Payment mutual exclusion

@@ -37,12 +37,6 @@ namespace CashProjection.ViewModels
         private readonly Stack<int> _redoStack = new();
 
         [ObservableProperty]
-        private string _accountName = "My Account";
-
-        [ObservableProperty]
-        private string _currentBalanceDisplay = string.Empty;
-
-        [ObservableProperty]
         private bool _isDirty;
 
         // Re-entrancy guard for ResortAndRecalculate
@@ -75,8 +69,6 @@ namespace CashProjection.ViewModels
             _changeHistory = changeHistory;
 
             _account = _accountRepo.GetOrCreateActiveAccount();
-            _accountName = _account.Name;
-            _currentBalanceDisplay = FormatBalanceDisplay();
 
             _transactions = [];
             _transactions.CollectionChanged += Transactions_CollectionChanged;
@@ -135,9 +127,7 @@ namespace CashProjection.ViewModels
                 bankRow.MatchGroupId = groupId;
                 bankRow.MatchScore = match.Score;
 
-                var stillSameOccurrence = item is not null
-                    && match.MatchedAtItemDate.HasValue
-                    && item.TransactionDate.Date == match.MatchedAtItemDate.Value.Date;
+                var stillSameOccurrence = item is not null && match.IsForCurrentOccurrenceOf(item.TransactionDate);
 
                 if (stillSameOccurrence)
                 {
@@ -323,6 +313,7 @@ namespace CashProjection.ViewModels
 
             var before = transaction.ToModel();
             ProjectionRescheduler.Advance(transaction, Transactions, realizedAmount: null);
+            transaction.UpdatedAtUtc = DateTime.UtcNow;
             var after = transaction.ToModel();
 
             _itemRepo.Update(after);
@@ -336,9 +327,6 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void Save()
         {
-            _account.Name = AccountName;
-            _accountRepo.Update(_account);
-
             var changedCount = 0;
             foreach (var vm in _transactions.Where(t => !t.IsReadOnly))
             {
@@ -348,6 +336,9 @@ namespace CashProjection.ViewModels
                 if (_lastPersistedSnapshots.TryGetValue(vm, out var previousJson) && previousJson != currentJson)
                 {
                     var previous = JsonSerializer.Deserialize<ProjectionItem>(previousJson)!;
+                    vm.UpdatedAtUtc = DateTime.UtcNow;
+                    current = vm.ToModel();
+                    currentJson = JsonSerializer.Serialize(current);
                     _itemRepo.Update(current);
                     _changeHistory.Record(ChangeEntityType.ProjectionItem, current.Id, ChangeType.Modified, previous, current, $"Edited '{current.Name}' — {ChangeDescriber.DescribeProjectionItemDiff(previous, current)}");
                     _lastPersistedSnapshots[vm] = currentJson;
@@ -430,15 +421,8 @@ namespace CashProjection.ViewModels
             _account.PlaidItemId = fresh.PlaidItemId;
             _account.PlaidAccountId = fresh.PlaidAccountId;
 
-            AccountName = _account.Name;
-            CurrentBalanceDisplay = FormatBalanceDisplay();
             ResortAndRecalculate();
         }
-
-        private string FormatBalanceDisplay() =>
-            _account.StartingBalanceAsOf.HasValue
-                ? $"Current balance: {_account.StartingBalance:C2} (as of {_account.StartingBalanceAsOf.Value.ToLocalTime():g}, from Plaid)"
-                : $"Current balance: {_account.StartingBalance:C2} (not yet synced from Plaid)";
 
         public void SetViewReference(FrameworkElement view)
         {
@@ -542,11 +526,6 @@ namespace CashProjection.ViewModels
             );
         }
 
-        partial void OnAccountNameChanged(string value)
-        {
-            IsDirty = true;
-        }
-
         partial void OnIsSearchOpenChanged(bool value)
         {
             if (value)
@@ -617,8 +596,11 @@ namespace CashProjection.ViewModels
                 var start = now.AddMonths(-1);
                 var end = now.AddMonths(1);
 
+                // Only projection items can be the "lowest" point — this is
+                // a warning about projected activity, not a historical fact
+                // about what the real balance already did.
                 var candidates = ordered
-                    .Where(t => t.TransactionDate.Date >= start && t.TransactionDate.Date <= end)
+                    .Where(t => !t.IsReadOnly && t.TransactionDate.Date >= start && t.TransactionDate.Date <= end)
                     .ToList();
                 ProjectionItemViewModel? lowest = null;
                 if (candidates.Count > 0)
@@ -638,6 +620,15 @@ namespace CashProjection.ViewModels
                 var overdueCutoff = now.AddDays(-overdueThresholdDays);
                 foreach (var t in _transactions.Where(t => !t.IsReadOnly))
                     t.IsOverdueUnmatched = !t.MatchGroupId.HasValue && t.TransactionDate.Date < overdueCutoff;
+
+                // ApplySort's view.CustomSort (set because TransactionComparer
+                // needs more than a single property to order rows) means the
+                // grid's own IsLiveSorting never actually re-positions a row
+                // when its TransactionDate changes — WPF's live-shaping only
+                // auto-resorts views sorted via SortDescriptions. Re-apply the
+                // sort explicitly so the grid reorders immediately instead of
+                // only catching up on the next full reload.
+                ApplySort();
             }
             finally
             {

@@ -23,21 +23,14 @@ namespace CashProjection.ViewModels
             Refresh();
         }
 
-        public string AccountName => _account.Name;
-
-        public string BalanceDisplay =>
-            _account.StartingBalanceAsOf.HasValue
-                ? $"Current balance: {_account.StartingBalance:C2} (as of {_account.StartingBalanceAsOf.Value.ToLocalTime():g}, from Plaid)"
-                : $"Current balance: {_account.StartingBalance:C2} (not yet synced from Plaid)";
-
         public ObservableCollection<BankTransactionRow> Transactions { get; }
 
-        // Call after a sync so the balance header and grid pick up fresh
-        // data without needing to rebuild the whole view model.
+        // Call after a sync so the grid picks up fresh data without needing
+        // to rebuild the whole view model. The account's balance itself is
+        // now shown in the shared shell header (ShellViewModel), sourced
+        // directly from the Account row rather than through here.
         public void Refresh()
         {
-            OnPropertyChanged(nameof(BalanceDisplay));
-
             Transactions.Clear();
 
             // This institution doesn't populate Plaid's running_balance
@@ -57,20 +50,27 @@ namespace CashProjection.ViewModels
 
         public sealed class BankTransactionRow
         {
+            private readonly BankTransaction _txn;
+
             public BankTransactionRow(BankTransaction txn, decimal runningBalance)
             {
+                _txn = txn;
                 Date = txn.TxnDate;
-                Description = txn.Description;
                 Amount = txn.Amount;
                 Pending = txn.Pending;
                 RunningBalance = runningBalance;
             }
 
             public DateTime Date { get; }
-            public string Description { get; }
+            public string Description => _txn.Description;
             public decimal Amount { get; }
             public bool Pending { get; }
             public decimal RunningBalance { get; }
+
+            // BankTransaction.PrimaryDisplayName / HasDistinctVendorName is
+            // the one shared rule for this — see there.
+            public bool HasDistinctVendorName => _txn.HasDistinctVendorName;
+            public string PrimaryDisplayName => _txn.PrimaryDisplayName;
         }
     }
 }

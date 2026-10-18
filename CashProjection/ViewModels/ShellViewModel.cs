@@ -30,6 +30,15 @@ namespace CashProjection.ViewModels
         private readonly AccountRepository _accountRepo;
         private readonly PlaidSettingsService _plaidSettings;
         private readonly SecretStoreFactory _secretStores;
+        private readonly UnseenTransactionsTracker _unseenTracker;
+        private readonly DispatcherTimer _syncTimer;
+
+        // Guards RunBackgroundSyncAsync against overlap: the periodic timer,
+        // the startup sync, and a manual "Reconnect Bank" can all try to
+        // trigger one around the same time, and Plaid's sync cursor isn't
+        // safe to walk concurrently from two callers at once. 0 = idle,
+        // 1 = a sync is in flight.
+        private int _isSyncing;
 
         private WeakReference<FrameworkElement>? _viewRef;
 
@@ -46,6 +55,9 @@ namespace CashProjection.ViewModels
         private Account? _selectedAccount;
 
         [ObservableProperty]
+        private AccountListItemViewModel? _selectedAccountEntry;
+
+        [ObservableProperty]
         private AccountTransactionsViewModel? _otherAccountVM;
 
         public ShellViewModel(
@@ -60,7 +72,8 @@ namespace CashProjection.ViewModels
             PlaidSyncService syncService,
             AccountRepository accountRepo,
             PlaidSettingsService plaidSettings,
-            SecretStoreFactory secretStores)
+            SecretStoreFactory secretStores,
+            UnseenTransactionsTracker unseenTracker)
         {
             StatusVM = statusVM;
             AccountVM = accountVM;
@@ -74,10 +87,20 @@ namespace CashProjection.ViewModels
             _linkService = linkService;
             _syncService = syncService;
             _accountRepo = accountRepo;
+            _unseenTracker = unseenTracker;
             SearchResults = new ObservableCollection<SearchResult>();
-            Accounts = new ObservableCollection<Account>(accountRepo.GetAll());
-            SelectedAccount = Accounts.FirstOrDefault(a => a.SupportsProjections) ?? Accounts.FirstOrDefault();
+            Accounts = new ObservableCollection<AccountListItemViewModel>(
+                accountRepo.GetAll().Select(a => new AccountListItemViewModel(a)));
+            RefreshAccountListEntries();
+            SelectedAccountEntry = Accounts.FirstOrDefault(e => e.Account.SupportsProjections) ?? Accounts.FirstOrDefault();
             StatusVM.Report("Ready");
+
+            // Plaid's /transactions/sync is the cheap, cursor-based
+            // incremental endpoint — it's meant to be polled, so checking
+            // every 10 minutes is nowhere near a rate-limiting concern.
+            _syncTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
+            _syncTimer.Tick += (_, _) => _ = RunBackgroundSyncAsync();
+            _syncTimer.Start();
         }
 
         public AccountProjectionViewModel AccountVM { get; }
@@ -86,7 +109,7 @@ namespace CashProjection.ViewModels
 
         public ObservableCollection<SearchResult> SearchResults { get; }
 
-        public ObservableCollection<Account> Accounts { get; }
+        public ObservableCollection<AccountListItemViewModel> Accounts { get; }
 
         // Checking is the one account with projections/matching — the
         // toolbar's editing actions and the grid only make sense there.
@@ -96,20 +119,126 @@ namespace CashProjection.ViewModels
 
         public bool IsOtherAccountSelected => SelectedAccount is not null && !IsCheckingSelected;
 
+        // The shared header's balance block — sourced directly from
+        // SelectedAccount (which already carries StartingBalance/
+        // StartingBalanceAsOf) rather than proxying through AccountVM or
+        // OtherAccountVM, since the header has to work identically no
+        // matter which kind of account is currently selected.
+        public string SelectedAccountBalanceLine =>
+            SelectedAccount is null ? string.Empty : $"Balance: {SelectedAccount.StartingBalance:C2}";
+
+        public string SelectedAccountBalanceAsOfLine =>
+            SelectedAccount?.StartingBalanceAsOf is { } asOf
+                ? $"Via Plaid, {asOf.ToLocalTime():yyyy-MM-dd HH:mm}"
+                : "Not yet synced from Plaid";
+
         partial void OnSelectedAccountChanged(Account? value)
         {
             OnPropertyChanged(nameof(IsCheckingSelected));
             OnPropertyChanged(nameof(IsOtherAccountSelected));
+            OnPropertyChanged(nameof(SelectedAccountBalanceLine));
+            OnPropertyChanged(nameof(SelectedAccountBalanceAsOfLine));
 
             OtherAccountVM = value is not null && !value.SupportsProjections
                 ? new AccountTransactionsViewModel(value, _bankRepo)
                 : null;
+
+            // The user is now looking at this account, so whatever came in
+            // since the last time they looked is no longer "unseen".
+            if (value is not null)
+            {
+                _unseenTracker.MarkSeen(value.Id);
+                var entry = Accounts.FirstOrDefault(e => e.Id == value.Id);
+                if (entry is not null)
+                    entry.HasUnseenTransactions = false;
+            }
+        }
+
+        // Keeps SelectedAccount (the plain Account used everywhere else in
+        // the shell) in sync with whichever row the dropdown — now bound to
+        // the richer AccountListItemViewModel rows — has selected.
+        partial void OnSelectedAccountEntryChanged(AccountListItemViewModel? value)
+        {
+            SelectedAccount = value?.Account;
         }
 
         // Called after a sync completes, so whichever non-checking account
         // is currently on screen picks up fresh balance/transaction data
         // without the user having to re-select it.
         public void RefreshOtherAccountView() => OtherAccountVM?.Refresh();
+
+        // SelectedAccount, AccountVM's internal account, and
+        // OtherAccountVM's internal account are three independent
+        // in-memory copies of the same database row — a sync only updates
+        // the latter two directly, so the shared header needs its own
+        // explicit refresh to avoid showing a stale balance after sync.
+        public void RefreshSelectedAccountHeader()
+        {
+            if (SelectedAccount is null)
+                return;
+
+            var fresh = _accountRepo.GetAll().FirstOrDefault(a => a.Id == SelectedAccount.Id);
+            if (fresh is null)
+                return;
+
+            SelectedAccount.StartingBalance = fresh.StartingBalance;
+            SelectedAccount.StartingBalanceAsOf = fresh.StartingBalanceAsOf;
+            OnPropertyChanged(nameof(SelectedAccountBalanceLine));
+            OnPropertyChanged(nameof(SelectedAccountBalanceAsOfLine));
+
+            RefreshAccountListEntries();
+        }
+
+        // Pushes fresh balances (and unseen-transaction flags) into the
+        // dropdown's rows. Called after every sync — the dropdown is a
+        // separate set of view-model objects from SelectedAccount/AccountVM/
+        // OtherAccountVM, so it needs its own explicit refresh too.
+        public void RefreshAccountListEntries()
+        {
+            var fresh = _accountRepo.GetAll().ToDictionary(a => a.Id);
+
+            foreach (var entry in Accounts)
+            {
+                if (fresh.TryGetValue(entry.Id, out var account))
+                    entry.UpdateBalance(account.StartingBalance);
+
+                // The account currently on screen just had its own data
+                // refreshed above/alongside this call, so whatever came in
+                // for it counts as seen rather than flagging a badge on the
+                // very row the user is already looking at.
+                if (entry.Id == SelectedAccount?.Id)
+                    _unseenTracker.MarkSeen(entry.Id);
+
+                entry.HasUnseenTransactions = _unseenTracker.GetUnseenCount(entry.Id) > 0;
+            }
+        }
+
+        // Re-syncs with Plaid and refreshes every view that shows bank
+        // data. Shared by app startup, the periodic timer, and a manual
+        // "Reconnect Bank" so there's exactly one place that knows what
+        // "a sync just happened" means for the UI.
+        public async Task RunBackgroundSyncAsync()
+        {
+            if (Interlocked.CompareExchange(ref _isSyncing, 1, 0) != 0)
+                return;
+
+            try
+            {
+                await _syncService.SyncAsync(_accountRepo.GetAll());
+                _matchingService.FindAndRecordPresumptiveMatches(AccountVM.AccountId);
+                await Application.Current!.Dispatcher.InvokeAsync(() =>
+                {
+                    AccountVM.RefreshAccountFromDatabase();
+                    AccountVM.ReloadTransactionsFromDatabase();
+                    RefreshOtherAccountView();
+                    RefreshSelectedAccountHeader();
+                });
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _isSyncing, 0);
+            }
+        }
 
         partial void OnFindTextChanged(string value)
         {
@@ -177,12 +306,17 @@ namespace CashProjection.ViewModels
         {
             // Re-scan before showing results — matching otherwise only ever
             // ran once, right after the Plaid sync at startup, so items
-            // added or edited mid-session were never considered.
+            // added or edited mid-session were never considered. Also
+            // expire any presumptive match whose projection item has since
+            // moved outside the date window (e.g. pushed forward to its
+            // next occurrence without ever being decided), so the review
+            // list never shows a stale pairing.
             StatusVM.Report("Scanning for presumptive matches...", busy: true);
             var found = _matchingService.FindAndRecordPresumptiveMatches(AccountVM.AccountId);
-            StatusVM.Report(
-                found.Count > 0 ? $"Found {found.Count} new presumptive match(es)." : "No new presumptive matches found.",
-                busy: false);
+            var expired = _matchingService.ExpireStaleMatches(AccountVM.AccountId);
+            var foundMessage = found.Count > 0 ? $"Found {found.Count} new presumptive match(es)." : "No new presumptive matches found.";
+            var expiredMessage = expired > 0 ? $" Expired {expired} stale match(es)." : "";
+            StatusVM.Report(foundMessage + expiredMessage, busy: false);
 
             var vm = new MatchReviewViewModel(_matchRepo, _itemRepo, _bankRepo, _changeHistory, AccountVM.ReloadTransactionsFromDatabase);
             var window = new MatchReviewView(vm) { Owner = Application.Current?.MainWindow };
@@ -204,18 +338,7 @@ namespace CashProjection.ViewModels
                 return;
 
             StatusVM.Report("Bank connection restored — syncing...", busy: true);
-            var account = _accountRepo.GetOrCreateActiveAccount();
-            _ = System.Threading.Tasks.Task.Run(async () =>
-            {
-                await _syncService.SyncAsync(_accountRepo.GetAll());
-                _matchingService.FindAndRecordPresumptiveMatches(account.Id);
-                await Application.Current!.Dispatcher.InvokeAsync(() =>
-                {
-                    AccountVM.RefreshAccountFromDatabase();
-                    AccountVM.ReloadTransactionsFromDatabase();
-                    RefreshOtherAccountView();
-                });
-            });
+            _ = RunBackgroundSyncAsync();
         }
 
 #if DEBUG

@@ -37,7 +37,6 @@ namespace CashProjection
             ConfigureServices(services);
             _serviceProvider = services.BuildServiceProvider();
 
-            var accountRepo = _serviceProvider.GetRequiredService<AccountRepository>();
             var linkService = _serviceProvider.GetRequiredService<PlaidLinkService>();
             var settings = _serviceProvider.GetRequiredService<PlaidSettingsService>();
 
@@ -73,20 +72,9 @@ namespace CashProjection
             // Back to normal behavior now that the real main window is up.
             ShutdownMode = ShutdownMode.OnLastWindowClose;
 
-            var account = accountRepo.GetOrCreateActiveAccount();
-            var syncService = _serviceProvider.GetRequiredService<PlaidSyncService>();
-            var matchingService = _serviceProvider.GetRequiredService<FuzzyMatchingService>();
-            _ = Task.Run(async () =>
-            {
-                await syncService.SyncAsync(accountRepo.GetAll());
-                matchingService.FindAndRecordPresumptiveMatches(account.Id);
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    shellViewModel.AccountVM.RefreshAccountFromDatabase();
-                    shellViewModel.AccountVM.ReloadTransactionsFromDatabase();
-                    shellViewModel.RefreshOtherAccountView();
-                });
-            });
+            // Kicks off the first sync immediately; ShellViewModel's own
+            // timer takes over from here for periodic re-syncs.
+            _ = shellViewModel.RunBackgroundSyncAsync();
         }
 
         private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
@@ -124,6 +112,7 @@ namespace CashProjection
             services.AddSingleton<PlaidClientFactory>();
             services.AddSingleton<PlaidLinkService>();
             services.AddSingleton<PlaidSyncService>();
+            services.AddSingleton<UnseenTransactionsTracker>();
             services.AddSingleton<FuzzyMatchingService>();
             services.AddSingleton<ChangeHistoryService>();
 

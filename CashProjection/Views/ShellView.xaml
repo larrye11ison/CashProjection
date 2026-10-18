@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:behaviors="clr-namespace:CashProjection.Behaviors"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:models="clr-namespace:CashProjection.Models"
     xmlns:vm="clr-namespace:CashProjection.ViewModels"
     xmlns:views="clr-namespace:CashProjection.Views"
     Title="Cash Projection"
@@ -16,6 +17,7 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <models:WindowWidthToAccountComboWidthConverter x:Key="AccountComboWidthConverter" />
     </Window.Resources>
 
     <!--  Keyboard shortcuts  -->
@@ -45,14 +47,6 @@
                 DockPanel.Dock="Top"
                 Mode="PrimaryMid">
                 <ToolBar Background="Transparent">
-                    <ComboBox
-                        MinWidth="160"
-                        VerticalAlignment="Center"
-                        DisplayMemberPath="Name"
-                        ItemsSource="{Binding Accounts}"
-                        SelectedItem="{Binding SelectedAccount}"
-                        ToolTip="Switch between linked accounts" />
-                    <Separator />
                     <Button
                         Command="{Binding AddNewCommand}"
                         Content="Add New"
@@ -144,29 +138,147 @@
                 </DockPanel>
             </materialDesign:ColorZone>
 
-            <!--
-                A DockPanel only gives "fill" treatment to its LAST child;
-                an earlier, un-docked sibling just claims its own desired
-                width/height regardless of Visibility, which starves
-                whichever view comes after it. Wrapping both in one Grid
-                cell makes them properly overlap in the same slot so
-                toggling Visibility actually swaps which one renders.
+            <DockPanel>
+                <!--
+                    Shared header for both account types: the account
+                    switcher doubles as the page title (no separate "Account
+                    Name" label), with the balance block sourced straight
+                    from ShellViewModel.SelectedAccount so it works
+                    identically whether checking or a read-only account is
+                    selected.
+                -->
+                <Grid
+                    Margin="20,16,20,0"
+                    DockPanel.Dock="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                Visibility is set on a plain wrapper Grid, NOT on the view
-                itself — setting DataContext and a Visibility binding on
-                the SAME element means the Visibility binding resolves
-                against the element's own (just-overridden) DataContext,
-                not the outer ShellViewModel, so it silently fails and
-                falls back to the framework default (Visible) forever.
-            -->
-            <Grid>
-                <Grid Visibility="{Binding IsCheckingSelected, Converter={StaticResource BoolToVis}}">
-                    <views:AccountProjectionView DataContext="{Binding AccountVM}" />
+                    <!--
+                        The width constraint lives on this wrapper, not on the
+                        ComboBox itself — MaterialDesign's ComboBox style has its
+                        own internal logic touching its Width (tied to the
+                        floating-label/popup machinery), which fought with a
+                        directly-bound Width and only resolved once the dropdown
+                        was opened and forced a re-layout. A plain Border has no
+                        such triggers, so it reliably holds the bound width from
+                        the first frame, and the ComboBox just stretches to fill it
+                        — which also keeps the closed box and the open popup
+                        (sized off the control's own ActualWidth) in agreement.
+                    -->
+                    <Border
+                        Grid.Column="0"
+                        Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource AccountComboWidthConverter}}"
+                        HorizontalAlignment="Left">
+                    <ComboBox
+                        Height="48"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ItemsSource="{Binding Accounts}"
+                        SelectedItem="{Binding SelectedAccountEntry}"
+                        ToolTip="Switch between linked accounts">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!--  New-transactions badge — cleared the moment this account is selected.  -->
+                                    <Ellipse
+                                        Grid.Column="0"
+                                        Width="8"
+                                        Height="8"
+                                        Margin="0,0,8,0"
+                                        VerticalAlignment="Center"
+                                        Fill="{DynamicResource PrimaryHueMidBrush}"
+                                        ToolTip="New transactions since you last viewed this account"
+                                        Visibility="{Binding HasUnseenTransactions, Converter={StaticResource BoolToVis}}" />
+
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        FontSize="22"
+                                        FontWeight="Bold"
+                                        Text="{Binding Name}"
+                                        TextTrimming="CharacterEllipsis" />
+
+                                    <!--
+                                        No explicit Foreground here, deliberately — the ComboBox's own
+                                        surface renders light regardless of the app's dark theme, so a
+                                        theme-resolved brush like MaterialDesignBodyLight (meant for the
+                                        dark Paper background) comes out nearly invisible against it. Instead,
+                                        inherit the same color the Name text above uses (which already
+                                        contrasts correctly against whatever this surface actually is) and
+                                        just dial it back with opacity.
+
+                                        Column is "*" (rather than Auto, like Name) and the text is
+                                        right-aligned within it, so the balance always sits flush against
+                                        the dropdown's right edge regardless of how wide the name is.
+                                    -->
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Margin="16,0,0,0"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Opacity="0.65"
+                                        FontSize="14"
+                                        FontWeight="Normal"
+                                        Text="{Binding BalanceDisplay}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    </Border>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+                        <TextBlock
+                            FontSize="16"
+                            FontWeight="Bold"
+                            Text="{Binding SelectedAccountBalanceLine}"
+                            TextAlignment="Right" />
+                        <TextBlock
+                            Margin="0,2,0,0"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesignBodyLight}"
+                            Text="{Binding SelectedAccountBalanceAsOfLine}"
+                            TextAlignment="Right"
+                            ToolTip="The real balance reported by your bank via Plaid." />
+                    </StackPanel>
                 </Grid>
-                <Grid Visibility="{Binding IsOtherAccountSelected, Converter={StaticResource BoolToVis}}">
-                    <views:AccountTransactionsView DataContext="{Binding OtherAccountVM}" />
+
+                <!--
+                    A DockPanel only gives "fill" treatment to its LAST child;
+                    an earlier, un-docked sibling just claims its own desired
+                    width/height regardless of Visibility, which starves
+                    whichever view comes after it. Wrapping both in one Grid
+                    cell makes them properly overlap in the same slot so
+                    toggling Visibility actually swaps which one renders.
+
+                    Visibility is set on a plain wrapper Grid, NOT on the view
+                    itself — setting DataContext and a Visibility binding on
+                    the SAME element means the Visibility binding resolves
+                    against the element's own (just-overridden) DataContext,
+                    not the outer ShellViewModel, so it silently fails and
+                    falls back to the framework default (Visible) forever.
+                -->
+                <Grid>
+                    <Grid Visibility="{Binding IsCheckingSelected, Converter={StaticResource BoolToVis}}">
+                        <views:AccountProjectionView DataContext="{Binding AccountVM}" />
+                    </Grid>
+                    <Grid Visibility="{Binding IsOtherAccountSelected, Converter={StaticResource BoolToVis}}">
+                        <views:AccountTransactionsView DataContext="{Binding OtherAccountVM}" />
+                    </Grid>
                 </Grid>
-            </Grid>
+            </DockPanel>
         </DockPanel>
 
         <!--  Modal Find overlay  -->

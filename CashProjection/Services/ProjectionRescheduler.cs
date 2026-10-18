@@ -16,12 +16,17 @@ namespace CashProjection.Services
                     .Where(t => t.Name == item.Name && !ReferenceEquals(t, item))
                     .OrderByDescending(t => t.TransactionDate)
                     .FirstOrDefault();
-                if (lastTransaction is not null)
-                {
-                    item.TransactionDate = lastTransaction.TransactionDate.AddDays(14);
-                    ApplyRealizedAmount(item, realizedAmount);
-                    return;
-                }
+
+                // No same-named sibling to anchor to (e.g. this occurrence
+                // was renamed independently of the rest of its series) —
+                // fall back to advancing 14 days from itself rather than
+                // falling through to the switch below, where
+                // TwoWeeksPastLast isn't a handled case and the date would
+                // silently stay put.
+                var anchor = lastTransaction?.TransactionDate ?? item.TransactionDate;
+                item.TransactionDate = anchor.AddDays(14);
+                ApplyRealizedAmount(item, realizedAmount);
+                return;
             }
 
             item.TransactionDate = item.Periodicity switch

@@ -26,5 +26,17 @@ namespace CashProjection.Models
         // this match's visual pairing, while the bank transaction itself
         // stays permanently "crossed off" regardless.
         public DateTime? MatchedAtItemDate { get; set; }
+
+        // The single rule for "is this Confirmed match still about the
+        // item's current occurrence, or a stale one it's since rescheduled
+        // past." Used both by the grid (to decide whether to visually pair
+        // the live item with its match) and by the matching scan (to decide
+        // whether the item is still eligible to be matched again) — kept as
+        // one method specifically so those two call sites can't drift back
+        // out of sync with each other the way they once did.
+        public bool IsForCurrentOccurrenceOf(ProjectionItem item) => IsForCurrentOccurrenceOf(item.TransactionDate);
+
+        public bool IsForCurrentOccurrenceOf(DateTime liveTransactionDate) =>
+            MatchedAtItemDate.HasValue && MatchedAtItemDate.Value.Date == liveTransactionDate.Date;
     }
 }

@@ -5,10 +5,13 @@
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     Title="Review Presumptive Matches"
     Width="820"
-    Height="520"
+    Height="560"
     Background="{DynamicResource MaterialDesignPaper}"
     Foreground="{DynamicResource MaterialDesignBody}"
     WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -22,68 +25,128 @@
             FontWeight="Bold"
             Text="Presumptive matches found between your projections and real bank transactions" />
 
+        <!--
+            One Card per projection item (the parent), with every still-open
+            candidate bank transaction for it (the children) listed beneath
+            — closest in date, then amount, sorted first. Grouping this way
+            means an item with several plausible candidates reads as one
+            decision with options, not several disconnected cards that
+            happen to repeat the same projection item.
+        -->
         <materialDesign:Card Grid.Row="1" Padding="0">
-            <DataGrid
-                AutoGenerateColumns="False"
-                Background="Transparent"
-                CanUserAddRows="False"
-                CanUserDeleteRows="False"
-                GridLinesVisibility="Horizontal"
-                HeadersVisibility="Column"
-                ItemsSource="{Binding PresumptiveMatches}"
-                RowStyle="{StaticResource MaterialDesignDataGridRow}"
-                Style="{StaticResource MaterialDesignDataGrid}">
-                <DataGrid.Resources>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
-                    </Style>
-                </DataGrid.Resources>
-                <DataGrid.Columns>
-                    <DataGridTextColumn
-                        Width="110"
-                        Binding="{Binding ProjectionItem.TransactionDate, StringFormat=d}"
-                        Header="Projected Date" />
-                    <DataGridTextColumn
-                        Width="160"
-                        Binding="{Binding ProjectionItem.Name}"
-                        Header="Projection Item" />
-                    <DataGridTextColumn
-                        Width="110"
-                        Binding="{Binding BankTransaction.TxnDate, StringFormat=d}"
-                        Header="Bank Date" />
-                    <DataGridTextColumn
-                        Width="*"
-                        Binding="{Binding BankTransaction.Description}"
-                        Header="Bank Description" />
-                    <DataGridTextColumn
-                        Width="100"
-                        Binding="{Binding BankTransaction.Amount, StringFormat=C2}"
-                        Header="Amount" />
-                    <DataGridTextColumn
-                        Width="60"
-                        Binding="{Binding Match.Score}"
-                        Header="Score" />
-                    <DataGridTemplateColumn Width="150" Header="Decision">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button
-                                        Margin="0,0,4,0"
-                                        Click="AcceptButton_Click"
-                                        Content="Accept"
-                                        Style="{StaticResource MaterialDesignRaisedButton}"
-                                        Tag="{Binding}" />
-                                    <Button
-                                        Click="RejectButton_Click"
-                                        Content="Reject"
-                                        Style="{StaticResource MaterialDesignRaisedButton}"
-                                        Tag="{Binding}" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl Margin="12" ItemsSource="{Binding MatchGroups}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <materialDesign:Card Margin="0,0,0,14" Padding="16,12">
+                                <StackPanel>
+                                    <!--  Parent: the projection item.  -->
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="90" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="90" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            FontWeight="Bold"
+                                            Text="Projected" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ProjectionItem.TransactionDate, StringFormat=d}" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            FontWeight="Bold"
+                                            Text="{Binding ProjectionItem.Name}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            Text="{Binding ProjectionAmount, StringFormat=C2}"
+                                            TextAlignment="Right" />
+                                    </Grid>
+
+                                    <!--
+                                        Children: candidate bank transactions, each
+                                        independently Accept/Reject-able, indented
+                                        under the parent to read as "options for
+                                        this item" rather than peers of it.
+                                    -->
+                                    <ItemsControl ItemsSource="{Binding Candidates}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="28,0,0,6"
+                                                    Padding="12,8"
+                                                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <Grid Grid.Column="0" VerticalAlignment="Center">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="80" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="90" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="{Binding BankTransaction.TxnDate, StringFormat=d}" />
+
+                                                            <!--
+                                                                Vendor name on top, raw bank description below —
+                                                                only when they actually differ (same rule as the
+                                                                main transaction grids); otherwise this collapses
+                                                                to a single PrimaryDisplayName line.
+                                                            -->
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding BankTransaction.PrimaryDisplayName}" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Opacity="0.65"
+                                                                    Text="{Binding BankTransaction.Description}"
+                                                                    TextTrimming="CharacterEllipsis"
+                                                                    Visibility="{Binding BankTransaction.HasDistinctVendorName, Converter={StaticResource BoolToVis}}" />
+                                                            </StackPanel>
+
+                                                            <TextBlock
+                                                                Grid.Column="2"
+                                                                Text="{Binding BankTransaction.Amount, StringFormat=C2}"
+                                                                TextAlignment="Right" />
+                                                        </Grid>
+
+                                                        <StackPanel
+                                                            Grid.Column="1"
+                                                            Margin="16,0,0,0"
+                                                            Orientation="Horizontal"
+                                                            VerticalAlignment="Center">
+                                                            <TextBlock
+                                                                Margin="0,0,12,0"
+                                                                VerticalAlignment="Center"
+                                                                Text="{Binding Match.Score, StringFormat='Score: {0}'}" />
+                                                            <Button
+                                                                Margin="0,0,4,0"
+                                                                Click="AcceptButton_Click"
+                                                                Content="Accept"
+                                                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                                                Tag="{Binding}" />
+                                                            <Button
+                                                                Click="RejectButton_Click"
+                                                                Content="Reject"
+                                                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                                                Tag="{Binding}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                </DataGrid.Columns>
-            </DataGrid>
+                            </materialDesign:Card>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </materialDesign:Card>
     </Grid>
 </Window>
