@@ -19,6 +19,8 @@ namespace CashProjection.ViewModels
         private readonly ChangeHistoryService _changeHistory;
         private readonly Action _onDataChanged;
 
+        public event Action? RequestClose;
+
         public ObservableCollection<PresumptiveMatchGroup> MatchGroups { get; } = new();
 
         public MatchReviewViewModel(
@@ -203,6 +205,9 @@ namespace CashProjection.ViewModels
 
             _onDataChanged();
         }
+
+        [RelayCommand]
+        public void Close() => RequestClose?.Invoke();
 
         private static Match Clone(Match m) => new Match
         {

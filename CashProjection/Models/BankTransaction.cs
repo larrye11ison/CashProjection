@@ -53,5 +53,14 @@ namespace CashProjection.Models
         public bool HasDistinctVendorName =>
             !string.IsNullOrWhiteSpace(VendorName)
             && !string.Equals(VendorName.Trim(), Description.Trim(), StringComparison.Ordinal);
+
+        // Aliases so the shared DualLineNameTemplate (App.xaml) can bind
+        // uniformly across both this type and ProjectionItemViewModel,
+        // which expose the same shape under different names (Description
+        // vs Name) — that template is the one place controlling how every
+        // list in the app shows the primary/secondary name pair, so it
+        // can't hard-code either type's own property names.
+        public string SecondaryDisplayText => Description;
+        public bool HasDistinctSecondaryText => HasDistinctVendorName;
     }
 }

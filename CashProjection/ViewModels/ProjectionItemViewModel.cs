@@ -21,6 +21,8 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(HasDistinctVendorName))]
         [NotifyPropertyChangedFor(nameof(PrimaryDisplayName))]
+        [NotifyPropertyChangedFor(nameof(SecondaryDisplayText))]
+        [NotifyPropertyChangedFor(nameof(HasDistinctSecondaryText))]
         private string _name = string.Empty;
 
         [ObservableProperty]
@@ -54,6 +56,17 @@ namespace CashProjection.ViewModels
 
         [ObservableProperty]
         private bool _isOverdueUnmatched;
+
+        // Unmatched and dated on/before the latest real bank transaction —
+        // it should have posted by now but hasn't. Distinct from
+        // IsOverdueUnmatched (which fires purely off "today minus N days",
+        // regardless of bank activity): this fires the moment a scheduled
+        // item falls behind what the bank has actually reported, even if
+        // that's within the normal overdue-warning threshold. Drives both
+        // the row highlight and sorting these above the real transactions
+        // they're expected to be reflected in soon.
+        [ObservableProperty]
+        private bool _isPendingBankActivity;
 
         // The date used for sort order. Equal to TransactionDate, except for
         // a matched projection item, which borrows its matched real
@@ -95,6 +108,16 @@ namespace CashProjection.ViewModels
         // The grid's primary (top-line) text for this row — the vendor name
         // when there is one, otherwise just Name.
         public string PrimaryDisplayName => string.IsNullOrWhiteSpace(VendorName) ? Name : VendorName;
+
+        // Aliases so the shared DualLineNameTemplate (App.xaml) can bind
+        // uniformly across both this type and BankTransaction, which
+        // expose the same shape under different names (Name vs
+        // Description) — that template is the one place controlling how
+        // every list in the app (the main grid, other-account transactions,
+        // Match Review, Find) shows the primary/secondary name pair, so it
+        // can't hard-code either type's own property names.
+        public string SecondaryDisplayText => Name;
+        public bool HasDistinctSecondaryText => HasDistinctVendorName;
 
         // True when Balance was set directly from Plaid's own running_balance
         // field (the bank's reported balance after this transaction) — an
@@ -157,9 +180,9 @@ namespace CashProjection.ViewModels
         // to build the model actually persisted, and stamping "now" on
         // every call made every snapshot differ from the last regardless of
         // whether anything was actually edited. Callers that represent a
-        // real mutation (Save's detected-change branch, PushForward, match
-        // acceptance) are responsible for bumping UpdatedAtUtc themselves
-        // before calling this.
+        // real mutation (CommitEdit's detected-change branch, PushForward,
+        // match acceptance) are responsible for bumping UpdatedAtUtc
+        // themselves before calling this.
         public ProjectionItem ToModel() => new ProjectionItem
         {
             Id = Id,

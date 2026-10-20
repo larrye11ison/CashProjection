@@ -13,5 +13,12 @@ namespace CashProjection.ViewModels
         public ObservableCollection<PresumptiveMatchRow> Candidates { get; } = new();
 
         public decimal ProjectionAmount => ProjectionItem.Payment ?? -(ProjectionItem.Deposit ?? 0m);
+
+        // Same rule as BankTransaction's vendor-name/raw-description pair —
+        // only show the match pattern alongside the item's name when it's
+        // actually set and differs from it; otherwise it's redundant.
+        public bool HasDistinctMatchPattern =>
+            !string.IsNullOrWhiteSpace(ProjectionItem.MatchText)
+            && !string.Equals(ProjectionItem.MatchText.Trim(), ProjectionItem.Name.Trim(), StringComparison.Ordinal);
     }
 }

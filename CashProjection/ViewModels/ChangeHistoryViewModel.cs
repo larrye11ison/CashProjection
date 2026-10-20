@@ -12,6 +12,8 @@ namespace CashProjection.ViewModels
         private readonly ChangeHistoryService _historyService;
         private readonly Action _onDataChanged;
 
+        public event Action? RequestClose;
+
         public ObservableCollection<ChangeHistoryEntry> Entries { get; } = new();
 
         public ChangeHistoryViewModel(ChangeHistoryService historyService, Action onDataChanged)
@@ -57,5 +59,8 @@ namespace CashProjection.ViewModels
             _onDataChanged();
             Reload();
         }
+
+        [RelayCommand]
+        public void Close() => RequestClose?.Invoke();
     }
 }

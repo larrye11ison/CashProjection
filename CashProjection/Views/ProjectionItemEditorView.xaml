@@ -1,0 +1,106 @@
+<UserControl
+    x:Class="CashProjection.Views.ProjectionItemEditorView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:CashProjection.Models"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+    Width="480">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <ObjectDataProvider
+            x:Key="PeriodicityEnum"
+            MethodName="GetValues"
+            ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:Periodicity" />
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+    </UserControl.Resources>
+
+    <StackPanel Margin="20">
+        <DockPanel Margin="0,0,0,16" LastChildFill="True">
+            <Button
+                Command="{Binding CancelCommand}"
+                DockPanel.Dock="Right"
+                Style="{StaticResource MaterialDesignIconButton}"
+                ToolTip="Close">
+                <materialDesign:PackIcon Kind="Close" />
+            </Button>
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="18"
+                FontWeight="Bold"
+                Text="{Binding Title}" />
+        </DockPanel>
+
+        <TextBox
+            Margin="0,0,0,16"
+            materialDesign:HintAssist.Hint="Name"
+            Style="{StaticResource MaterialDesignOutlinedTextBox}"
+            Text="{Binding Scratch.Name, UpdateSourceTrigger=PropertyChanged}" />
+
+        <DatePicker
+            Margin="0,0,0,16"
+            materialDesign:HintAssist.Hint="Date"
+            SelectedDate="{Binding Scratch.TransactionDate}"
+            Style="{StaticResource MaterialDesignOutlinedDatePicker}" />
+
+        <Grid Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                Grid.Column="0"
+                materialDesign:HintAssist.Hint="Deposit"
+                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                Text="{Binding Scratch.Deposit, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBox
+                Grid.Column="2"
+                materialDesign:HintAssist.Hint="Payment"
+                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                Text="{Binding Scratch.Payment, UpdateSourceTrigger=PropertyChanged}" />
+        </Grid>
+
+        <ComboBox
+            Margin="0,0,0,16"
+            materialDesign:HintAssist.Hint="Periodicity"
+            ItemsSource="{Binding Source={StaticResource PeriodicityEnum}}"
+            SelectedItem="{Binding Scratch.Periodicity}"
+            Style="{StaticResource MaterialDesignOutlinedComboBox}" />
+
+        <TextBox
+            Margin="0,0,0,4"
+            materialDesign:HintAssist.Hint="Match pattern (optional)"
+            Style="{StaticResource MaterialDesignOutlinedTextBox}"
+            Text="{Binding Scratch.MatchText, UpdateSourceTrigger=PropertyChanged}" />
+        <TextBlock
+            Margin="4,0,0,20"
+            FontSize="11"
+            Opacity="0.65"
+            Text="Only used to match this item to a real bank transaction — leave blank to match on the name above."
+            TextWrapping="Wrap" />
+
+        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+            <Button
+                Margin="0,0,8,0"
+                Command="{Binding DeleteCommand}"
+                Content="Delete"
+                Foreground="{DynamicResource MaterialDesign.Brush.ValidationError}"
+                Style="{StaticResource MaterialDesignOutlinedButton}"
+                Visibility="{Binding IsExisting, Converter={StaticResource BoolToVis}}" />
+            <Button
+                Margin="0,0,8,0"
+                Command="{Binding CancelCommand}"
+                Content="Cancel"
+                Style="{StaticResource MaterialDesignOutlinedButton}" />
+            <Button
+                Command="{Binding SaveCommand}"
+                Content="Save"
+                Style="{StaticResource MaterialDesignRaisedButton}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

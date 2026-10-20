@@ -5,12 +5,11 @@ using CashProjection.ViewModels;
 
 namespace CashProjection.Views
 {
-    public partial class ChangeHistoryView : Window
+    public partial class ChangeHistoryView : UserControl
     {
-        public ChangeHistoryView(ChangeHistoryViewModel vm)
+        public ChangeHistoryView()
         {
             InitializeComponent();
-            DataContext = vm;
         }
 
         private void UndoButton_Click(object sender, RoutedEventArgs e)

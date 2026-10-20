@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -30,14 +31,7 @@ namespace CashProjection.ViewModels
         private readonly ChangeHistoryService _changeHistory;
         private readonly Account _account;
 
-        // Tracks each item's last-persisted state so Save() can diff and
-        // only write+record history for fields that actually changed,
-        // rather than recording a change-history entry on every keystroke.
-        private readonly Dictionary<ProjectionItemViewModel, string> _lastPersistedSnapshots = new();
         private readonly Stack<int> _redoStack = new();
-
-        [ObservableProperty]
-        private bool _isDirty;
 
         // Re-entrancy guard for ResortAndRecalculate
         private bool _isRecalculating;
@@ -47,6 +41,9 @@ namespace CashProjection.ViewModels
 
         [ObservableProperty]
         private string _searchText = string.Empty;
+
+        [ObservableProperty]
+        private ProjectionItemViewModel? _selectedTransaction;
 
         private ObservableCollection<ProjectionItemViewModel> _transactions;
         private WeakReference<FrameworkElement>? _viewRef;
@@ -80,9 +77,6 @@ namespace CashProjection.ViewModels
 
             ApplySort();
             ResortAndRecalculate();
-            RebuildSnapshots();
-
-            _isDirty = false;
         }
 
         // Populates _transactions with both user-editable projection items
@@ -152,10 +146,11 @@ namespace CashProjection.ViewModels
             set => SetProperty(ref _transactions, value);
         }
 
-        [RelayCommand]
-        public void AddNew()
-        {
-            var model = new ProjectionItem
+        // Builds a fresh scratch item (not yet inserted anywhere) for the
+        // "new item" mode of the projection item editor popover — only
+        // actually persisted if the user clicks Save there.
+        public ProjectionItemViewModel BuildNewItemScratch() =>
+            new(new ProjectionItem
             {
                 AccountId = _account.Id,
                 Name = string.Empty,
@@ -163,52 +158,65 @@ namespace CashProjection.ViewModels
                 Deposit = null,
                 Payment = null,
                 Periodicity = Periodicity.Monthly
-            };
+            });
+
+        // Commits a new item created via the editor popover: inserts it,
+        // records history, and adds it to the live grid.
+        public void CommitNewItem(ProjectionItemViewModel scratch)
+        {
+            var model = scratch.ToModel();
+            model.Id = 0;
+            model.AccountId = _account.Id;
+            model.UpdatedAtUtc = DateTime.UtcNow;
+
             _itemRepo.Insert(model);
-            _changeHistory.Record(ChangeEntityType.ProjectionItem, model.Id, ChangeType.Added, before: null, after: model, "Added a new projection item");
+            _changeHistory.Record(ChangeEntityType.ProjectionItem, model.Id, ChangeType.Added, before: null, after: model, $"Added '{model.Name}'");
             _redoStack.Clear();
 
             var newTransaction = new ProjectionItemViewModel(model);
             _transactions.Add(newTransaction);
-            _lastPersistedSnapshots[newTransaction] = JsonSerializer.Serialize(model);
-            IsDirty = true;
+            _statusVM?.Report($"Saved '{model.Name}'.", busy: false, StatusSeverity.Info);
 
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(() =>
-                {
-                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
-                        return;
-
-                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
-                        return;
-
-                    dg.SelectedItem = newTransaction;
-                    var dateColumn = GetColumnByHeader(dg, "Date") ?? dg.Columns.FirstOrDefault();
-                    if (dateColumn is null)
-                    {
-                        dg.Focus();
-                        return;
-                    }
-
-                    dg.CurrentCell = new DataGridCellInfo(newTransaction, dateColumn);
-                    dg.ScrollIntoView(newTransaction, dateColumn);
-                    dg.UpdateLayout();
-                    dg.BeginEdit();
-                })
-            );
+            FocusTransaction(newTransaction);
         }
 
-        public void CommitPendingEdits()
+        // Applies edits made to the editor popover's scratch copy back onto
+        // the live item and persists immediately — the editor popover is
+        // the only place projection items get added or edited, so there's
+        // no reason to defer this to a separate Save step: what you click
+        // Save on is what's written to the DB. Diffs before/after (without
+        // yet bumping UpdatedAtUtc) so a Save that didn't actually change
+        // anything doesn't touch the DB or pollute change history.
+        public void CommitEdit(ProjectionItemViewModel target, ProjectionItemViewModel scratch)
         {
-            var view = CollectionViewSource.GetDefaultView(Transactions);
-            if (view is IEditableCollectionView ecv)
+            var before = target.ToModel();
+
+            target.Name = scratch.Name;
+            target.TransactionDate = scratch.TransactionDate;
+            target.Periodicity = scratch.Periodicity;
+            target.MatchText = scratch.MatchText;
+
+            if (scratch.Deposit.HasValue)
             {
-                if (ecv.IsEditingItem)
-                    ecv.CommitEdit();
-                if (ecv.IsAddingNew)
-                    ecv.CommitNew();
+                target.Deposit = scratch.Deposit;
             }
+            else
+            {
+                target.Payment = scratch.Payment;
+                if (!scratch.Payment.HasValue)
+                    target.Deposit = null;
+            }
+
+            if (JsonSerializer.Serialize(before) == JsonSerializer.Serialize(target.ToModel()))
+                return;
+
+            target.UpdatedAtUtc = DateTime.UtcNow;
+            var after = target.ToModel();
+
+            _itemRepo.Update(after);
+            _changeHistory.Record(ChangeEntityType.ProjectionItem, after.Id, ChangeType.Modified, before, after, $"Edited '{after.Name}' — {ChangeDescriber.DescribeProjectionItemDiff(before, after)}");
+            _redoStack.Clear();
+            _statusVM?.Report($"Saved '{after.Name}'.", busy: false, StatusSeverity.Info);
         }
 
         [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
@@ -236,17 +244,52 @@ namespace CashProjection.ViewModels
                 _itemRepo.Delete(transaction.Id);
                 _changeHistory.Record(ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Deleted, before, after: null, $"Deleted '{transaction.Name}'");
                 _redoStack.Clear();
-                _lastPersistedSnapshots.Remove(transaction);
 
                 _transactions.Remove(transaction);
-                IsDirty = true;
+
+                // Don't rely on the DataGrid's own SelectedItem-on-removal
+                // fixup running before the editor popover's RequestClose
+                // handler reads SelectedTransaction right after this —
+                // clear it explicitly so that handler's "fall back to
+                // today's row" logic doesn't try to re-focus a row that no
+                // longer exists.
+                if (ReferenceEquals(SelectedTransaction, transaction))
+                    SelectedTransaction = null;
             }
         }
 
+        // Called after any popover closes (Save/OK/Cancel/Escape alike) so
+        // keyboard focus lands back on the grid instead of nowhere —
+        // restoring to whatever's already selected, or falling back to
+        // whichever row's date is closest to today (ties broken by the
+        // grid's own display order) so arrow-key navigation always has a
+        // sensible place to resume from. Deliberately NOT an exact
+        // TransactionDate == today match with a "first row" fallback
+        // behind it — the grid sorts newest/furthest-future first, so on
+        // the (common) day nothing is dated exactly today, "first row"
+        // silently meant "the single furthest-future-dated row in the
+        // whole list," which is exactly the opposite of useful here.
+        public void FocusGridAfterPopoverClosed()
+        {
+            var today = DateTime.Today;
+            var target = SelectedTransaction
+                ?? _transactions
+                    .OrderBy(t => t, s_comparer)
+                    .OrderBy(t => Math.Abs((t.TransactionDate.Date - today).Ticks))
+                    .FirstOrDefault();
+
+            if (target is not null)
+                FocusTransaction(target);
+        }
+
+        // Selects and scrolls to a row — used by Find to jump to a result,
+        // and after adding a new item, so it's immediately visible.
         public void FocusTransaction(ProjectionItemViewModel item)
         {
             if (item is null)
                 return;
+
+            SelectedTransaction = item;
 
             Application.Current?.Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
@@ -258,51 +301,66 @@ namespace CashProjection.ViewModels
                     if (fe.FindName("TransactionsGrid") is not DataGrid dg)
                         return;
 
-                    dg.CommitEdit(DataGridEditingUnit.Cell, true);
-                    dg.CommitEdit(DataGridEditingUnit.Row, true);
-
                     dg.SelectedItem = item;
-                    var targetColumn = ChooseTargetColumn(dg, item) ?? dg.Columns.FirstOrDefault();
-                    if (targetColumn is null)
-                    {
-                        dg.Focus();
+                    var column = dg.Columns.FirstOrDefault();
+                    if (column is null)
                         return;
-                    }
 
-                    dg.CurrentCell = new DataGridCellInfo(item, targetColumn);
-                    dg.ScrollIntoView(item, targetColumn);
+                    dg.ScrollIntoView(item, column);
+
+                    // ScrollIntoView only schedules the layout pass that
+                    // would realize this row — the grid virtualizes rows,
+                    // so without forcing that layout to actually happen
+                    // right now, the row's container usually doesn't exist
+                    // yet and there'd be nothing to focus below.
                     dg.UpdateLayout();
-                    dg.BeginEdit();
 
-                    var cellContent = targetColumn.GetCellContent(item);
-                    if (cellContent != null)
+                    // CurrentCell, not SelectedItem, is what arrow-key
+                    // navigation actually moves from — without this, Up/
+                    // Down would resume from wherever the grid's current
+                    // cell last was, not from this row.
+                    dg.CurrentCell = new DataGridCellInfo(item, column);
+
+                    if (dg.ItemContainerGenerator.ContainerFromItem(item) is not DataGridRow row)
+                        return;
+
+                    // Arrow-key navigation needs an actual DataGridCell to
+                    // hold real *keyboard* focus (Keyboard.FocusedElement) —
+                    // distinct from "focus" in the WPF sense (FocusManager's
+                    // logical, per-scope notion). Focusing the row or the
+                    // grid itself only ever grabs the latter, which looks
+                    // right (the row highlights) but doesn't actually give
+                    // the grid's own Up/Down key handling anything to act
+                    // on until the user clicks a cell directly.
+                    row.ApplyTemplate();
+                    if (FindVisualChild<DataGridCellsPresenter>(row) is { } presenter
+                        && presenter.ItemContainerGenerator.ContainerFromIndex(dg.Columns.IndexOf(column)) is DataGridCell cell)
                     {
-                        if (FindVisualChild<TextBox>(cellContent) is TextBox editorTb)
-                        {
-                            editorTb.Focus();
-                            editorTb.SelectAll();
-                            Keyboard.Focus(editorTb);
-                        }
-                        else
-                        {
-                            if (cellContent is Control ctrl)
-                            {
-                                ctrl.Focus();
-                                Keyboard.Focus(ctrl);
-                            }
-                        }
+                        cell.Focus();
+                        Keyboard.Focus(cell);
                     }
                     else
                     {
-                        if (dg.ItemContainerGenerator.ContainerFromItem(item) is DataGridRow row)
-                        {
-                            row.IsSelected = true;
-                            row.BringIntoView();
-                            row.Focus();
-                        }
+                        row.Focus();
+                        Keyboard.Focus(row);
                     }
                 })
             );
+        }
+
+        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            var count = VisualTreeHelper.GetChildrenCount(parent);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T t)
+                    return t;
+                var result = FindVisualChild<T>(child);
+                if (result != null)
+                    return result;
+            }
+            return null;
         }
 
         [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
@@ -319,40 +377,6 @@ namespace CashProjection.ViewModels
             _itemRepo.Update(after);
             _changeHistory.Record(ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Rescheduled, before, after, $"Pushed '{transaction.Name}' forward — {ChangeDescriber.DescribeProjectionItemDiff(before, after)}");
             _redoStack.Clear();
-            _lastPersistedSnapshots[transaction] = JsonSerializer.Serialize(after);
-
-            IsDirty = true;
-        }
-
-        [RelayCommand]
-        public void Save()
-        {
-            var changedCount = 0;
-            foreach (var vm in _transactions.Where(t => !t.IsReadOnly))
-            {
-                var current = vm.ToModel();
-                var currentJson = JsonSerializer.Serialize(current);
-
-                if (_lastPersistedSnapshots.TryGetValue(vm, out var previousJson) && previousJson != currentJson)
-                {
-                    var previous = JsonSerializer.Deserialize<ProjectionItem>(previousJson)!;
-                    vm.UpdatedAtUtc = DateTime.UtcNow;
-                    current = vm.ToModel();
-                    currentJson = JsonSerializer.Serialize(current);
-                    _itemRepo.Update(current);
-                    _changeHistory.Record(ChangeEntityType.ProjectionItem, current.Id, ChangeType.Modified, previous, current, $"Edited '{current.Name}' — {ChangeDescriber.DescribeProjectionItemDiff(previous, current)}");
-                    _lastPersistedSnapshots[vm] = currentJson;
-                    changedCount++;
-                }
-            }
-            if (changedCount > 0)
-                _redoStack.Clear();
-
-            IsDirty = false;
-            _statusVM?.Report(
-                $"Saved {changedCount} change(s) to {Data.CashProjectionDbContext.GetDefaultDbPath()}",
-                busy: false,
-                StatusSeverity.Info);
         }
 
         [RelayCommand]
@@ -385,6 +409,14 @@ namespace CashProjection.ViewModels
         // rather than going through this view model's own collection.
         public void ReloadTransactionsFromDatabase()
         {
+            // LoadAllRows() below rebuilds every row as a brand-new
+            // ProjectionItemViewModel instance, so SelectedTransaction's
+            // current reference is about to go dangling even if the same
+            // logical row still exists afterward — capture enough to
+            // re-find it by identity (below), not by reference.
+            var previousSelection = SelectedTransaction;
+            var hadKeyboardFocus = IsGridKeyboardFocusWithin();
+
             foreach (var t in _transactions)
                 t.PropertyChanged -= Transaction_PropertyChanged;
             _transactions.CollectionChanged -= Transactions_CollectionChanged;
@@ -397,21 +429,44 @@ namespace CashProjection.ViewModels
 
             ApplySort();
             ResortAndRecalculate();
-            RebuildSnapshots();
-            IsDirty = false;
+
+            var restored = previousSelection is null
+                ? null
+                : _transactions.FirstOrDefault(t => SameRow(t, previousSelection));
+            if (restored is not null)
+            {
+                if (hadKeyboardFocus)
+                    FocusTransaction(restored);
+                else
+                    SelectedTransaction = restored;
+            }
         }
 
-        private void RebuildSnapshots()
+        // Identifies "the same logical row" across a full reload, where
+        // every row is rebuilt as a new object — by Id for an editable
+        // item, or by BankTransactionId for a real (read-only) bank row,
+        // since a fresh ProjectionItemViewModel never reuses the previous
+        // instance's reference.
+        private static bool SameRow(ProjectionItemViewModel a, ProjectionItemViewModel b) =>
+            a.IsReadOnly == b.IsReadOnly
+            && (a.IsReadOnly ? a.BankTransactionId == b.BankTransactionId : a.Id == b.Id);
+
+        // Whether keyboard focus currently belongs to the grid or one of
+        // its cells — used to decide whether a disruptive refresh/resort
+        // should pull focus back in afterward, or just quietly restore the
+        // selection without yanking focus away from wherever the user
+        // actually is (e.g. mid-edit in the item editor popover).
+        private bool IsGridKeyboardFocusWithin()
         {
-            _lastPersistedSnapshots.Clear();
-            foreach (var t in _transactions.Where(t => !t.IsReadOnly))
-                _lastPersistedSnapshots[t] = JsonSerializer.Serialize(t.ToModel());
+            if (_viewRef is null || !_viewRef.TryGetTarget(out var fe))
+                return false;
+
+            return fe.FindName("TransactionsGrid") is DataGrid { IsKeyboardFocusWithin: true };
         }
 
         // Re-reads the account row from the database and refreshes display
         // state. Used after a background Plaid sync updates the real
-        // starting balance, so the UI doesn't go stale and a subsequent
-        // Save() doesn't overwrite it with an in-memory value.
+        // starting balance, so the UI doesn't go stale.
         public void RefreshAccountFromDatabase()
         {
             var fresh = _accountRepo.GetOrCreateActiveAccount();
@@ -435,38 +490,6 @@ namespace CashProjection.ViewModels
             IsSearchOpen = !IsSearchOpen;
         }
 
-        private static DataGridColumn? ChooseTargetColumn(DataGrid dg, ProjectionItemViewModel item)
-        {
-            if (item.Deposit.HasValue)
-                return GetColumnByHeader(dg, "Deposit");
-            if (item.Payment.HasValue)
-                return GetColumnByHeader(dg, "Payment");
-
-            return GetColumnByHeader(dg, "Name") ?? dg.Columns.FirstOrDefault();
-        }
-
-        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
-        {
-            if (parent == null)
-                return null;
-            int count = VisualTreeHelper.GetChildrenCount(parent);
-            for (int i = 0; i < count; i++)
-            {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                if (child is T t)
-                    return t;
-                var result = FindVisualChild<T>(child);
-                if (result != null)
-                    return result;
-            }
-            return null;
-        }
-
-        private static DataGridColumn? GetColumnByHeader(DataGrid dg, string header) =>
-            dg.Columns.FirstOrDefault(c =>
-                c.Header is string s && s.Equals(header, StringComparison.CurrentCultureIgnoreCase)
-            );
-
         private void ApplySort()
         {
             var view = CollectionViewSource.GetDefaultView(Transactions);
@@ -484,7 +507,7 @@ namespace CashProjection.ViewModels
 
             if (view is ListCollectionView listView)
             {
-                listView.CustomSort = new TransactionComparer();
+                listView.CustomSort = s_comparer;
             }
             else
             {
@@ -551,6 +574,19 @@ namespace CashProjection.ViewModels
             if (_isRecalculating)
                 return;
 
+            // This forces a resort on every call (see the comment on the
+            // ApplySort() call at the bottom of the try block) — which can
+            // tear down and rebuild the grid's row/cell visual containers
+            // even when nothing about the actual order changed, losing
+            // whichever cell held real keyboard focus. Restore it
+            // afterward, same object reference (a resort doesn't replace
+            // any row's object, just reorders them), but only if the grid
+            // actually had focus beforehand — never steal focus into the
+            // grid on behalf of a background recalculation the user didn't
+            // ask for.
+            var previousSelection = SelectedTransaction;
+            var hadKeyboardFocus = IsGridKeyboardFocusWithin();
+
             _isRecalculating = true;
             try
             {
@@ -572,11 +608,56 @@ namespace CashProjection.ViewModels
                     runningReal -= netEffect;
                 }
 
-                // Plain chronological order for the balance math — independent
-                // of the display comparer's match-group adjacency/descending rules.
+                // Keep EffectiveSortDate in sync with the item's own date
+                // for every unmatched row — PushForward/edits mutate
+                // TransactionDate directly on the live object without a
+                // full reload, and nothing else keeps this in sync.
+                // Matched items are left alone; ApplyConfirmedMatches owns
+                // theirs (borrowed from the real transaction they're
+                // paired with), set once at load time.
+                foreach (var t in _transactions.Where(t => !t.MatchGroupId.HasValue))
+                    t.EffectiveSortDate = t.TransactionDate;
+
+                // Unmatched projections dated on/before the latest real
+                // bank transaction haven't posted at all yet despite being
+                // "due" by date — sorting/balancing them in raw date order
+                // interleaves them between real rows and produces an
+                // unexplained dip-then-recover in the Balance column that
+                // doesn't reflect how the balance actually moved. Pin them
+                // to sort (and be walked for the balance below) as a group
+                // directly above every real transaction instead, in order
+                // among themselves by actual date — while real activity
+                // stays contiguous below them. Also flagged for a distinct
+                // warning highlight: these are the ones worth double-
+                // checking — did the bill actually get paid, or was it
+                // forgotten?
+                var latestRealDate = _transactions
+                    .Where(t => t.IsReadOnly)
+                    .Select(t => t.TransactionDate.Date)
+                    .DefaultIfEmpty(DateTime.MinValue)
+                    .Max();
+
+                var pendingBankActivity = _transactions
+                    .Where(t => !t.IsReadOnly && !t.MatchGroupId.HasValue && t.TransactionDate.Date <= latestRealDate)
+                    .OrderBy(t => t.TransactionDate)
+                    .ToList();
+
+                foreach (var t in _transactions.Where(t => !t.IsReadOnly))
+                    t.IsPendingBankActivity = false;
+
+                for (var i = 0; i < pendingBankActivity.Count; i++)
+                {
+                    pendingBankActivity[i].IsPendingBankActivity = true;
+                    pendingBankActivity[i].EffectiveSortDate = latestRealDate.AddDays(1).AddSeconds(i);
+                }
+
+                // Walked in EffectiveSortDate order (not raw TransactionDate)
+                // so the Balance column reads correctly against the row
+                // order actually on screen — including the pinned pending
+                // items above, applied first/closest to the real balance.
                 var projectedAscending = _transactions
                     .Where(t => !t.IsReadOnly)
-                    .OrderBy(t => t.TransactionDate)
+                    .OrderBy(t => t.EffectiveSortDate)
                     .ToList();
 
                 var runningProjected = _account.StartingBalance;
@@ -634,6 +715,9 @@ namespace CashProjection.ViewModels
             {
                 _isRecalculating = false;
             }
+
+            if (hadKeyboardFocus && previousSelection is not null && _transactions.Contains(previousSelection))
+                FocusTransaction(previousSelection);
         }
 
         private void Transaction_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -648,7 +732,6 @@ namespace CashProjection.ViewModels
                     or nameof(ProjectionItemViewModel.Payment)
                     or nameof(ProjectionItemViewModel.Periodicity))
             {
-                IsDirty = true;
                 ResortAndRecalculate();
             }
         }
@@ -672,7 +755,6 @@ namespace CashProjection.ViewModels
                 }
             }
 
-            IsDirty = true;
             ResortAndRecalculate();
         }
 

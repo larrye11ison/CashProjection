@@ -29,6 +29,8 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private string _statusMessage = string.Empty;
 
+        public event Action? RequestClose;
+
         public PlaidEnvironmentSettingsViewModel(PlaidSettingsService settings, SecretStoreFactory secretStores, PlaidLinkService linkService)
         {
             _settings = settings;
@@ -99,5 +101,8 @@ namespace CashProjection.ViewModels
             StatusMessage = "Switched back to Sandbox. Restart the app to use test data again. " +
                 "Your Production connection, if any, is kept — not deleted.";
         }
+
+        [RelayCommand]
+        public void Close() => RequestClose?.Invoke();
     }
 }

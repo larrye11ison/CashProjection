@@ -46,6 +46,30 @@ namespace CashProjection.ViewModels
         private bool _isFindOpen;
 
         [ObservableProperty]
+        private bool _isChangeHistoryOpen;
+
+        [ObservableProperty]
+        private ChangeHistoryViewModel? _changeHistoryVM;
+
+        [ObservableProperty]
+        private bool _isMatchReviewOpen;
+
+        [ObservableProperty]
+        private MatchReviewViewModel? _matchReviewVM;
+
+        [ObservableProperty]
+        private bool _isPlaidSettingsOpen;
+
+        [ObservableProperty]
+        private PlaidEnvironmentSettingsViewModel? _plaidSettingsVM;
+
+        [ObservableProperty]
+        private bool _isEditorOpen;
+
+        [ObservableProperty]
+        private ProjectionItemEditorViewModel? _editorVM;
+
+        [ObservableProperty]
         private string _findText = string.Empty;
 
         [ObservableProperty]
@@ -101,6 +125,19 @@ namespace CashProjection.ViewModels
             _syncTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
             _syncTimer.Tick += (_, _) => _ = RunBackgroundSyncAsync();
             _syncTimer.Start();
+
+            // EditSelected/PushForwardSelected act on AccountVM's own
+            // selection, which lives on a different object — the generated
+            // RelayCommands don't auto-recompute CanExecute for a property
+            // change on someone else's VM, so poke them explicitly.
+            AccountVM.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(AccountProjectionViewModel.SelectedTransaction))
+                {
+                    EditSelectedCommand.NotifyCanExecuteChanged();
+                    PushForwardSelectedCommand.NotifyCanExecuteChanged();
+                }
+            };
         }
 
         public AccountProjectionViewModel AccountVM { get; }
@@ -224,14 +261,30 @@ namespace CashProjection.ViewModels
 
             try
             {
-                await _syncService.SyncAsync(_accountRepo.GetAll());
-                _matchingService.FindAndRecordPresumptiveMatches(AccountVM.AccountId);
+                var changedCount = await _syncService.SyncAsync(_accountRepo.GetAll());
+                if (changedCount > 0)
+                    _matchingService.FindAndRecordPresumptiveMatches(AccountVM.AccountId);
+
                 await Application.Current!.Dispatcher.InvokeAsync(() =>
                 {
+                    // Always refreshed, even when nothing new came down —
+                    // this updates the balance/"as of" figures in place on
+                    // the existing view-model objects (every sync re-reads
+                    // the account's current balance from Plaid), so it
+                    // never visibly disturbs the grid.
                     AccountVM.RefreshAccountFromDatabase();
-                    AccountVM.ReloadTransactionsFromDatabase();
-                    RefreshOtherAccountView();
                     RefreshSelectedAccountHeader();
+
+                    // ReloadTransactionsFromDatabase/RefreshOtherAccountView
+                    // clear and rebuild their collections from scratch —
+                    // visible as a flash in the grid — so skip them on the
+                    // (overwhelmingly common) periodic pass that found
+                    // nothing new to show.
+                    if (changedCount > 0)
+                    {
+                        AccountVM.ReloadTransactionsFromDatabase();
+                        RefreshOtherAccountView();
+                    }
                 });
             }
             finally
@@ -250,34 +303,46 @@ namespace CashProjection.ViewModels
             _viewRef = new WeakReference<FrameworkElement>(view);
         }
 
-        public bool CanClose()
+        [RelayCommand]
+        public void AddNew() => OpenEditor(target: null);
+
+        [RelayCommand(CanExecute = nameof(CanActOnSelection))]
+        public void EditSelected() => OpenEditor(AccountVM.SelectedTransaction);
+
+        [RelayCommand(CanExecute = nameof(CanActOnSelection))]
+        public void PushForwardSelected() => AccountVM.PushForwardCommand.Execute(AccountVM.SelectedTransaction);
+
+        private bool CanActOnSelection() => AccountVM?.SelectedTransaction is { IsEditable: true };
+
+        // Closes whichever single-instance overlay is currently open — the
+        // one deterministic Escape-dismiss path shared by every popover
+        // except Find (which has its own key handling for Up/Down/Enter
+        // too). See ShellView.xaml.cs's Overlay_PreviewKeyDown for why this
+        // doesn't just rely on each popover's own IsCancel button.
+        public void CancelActiveOverlay()
         {
-            AccountVM?.CommitPendingEdits();
-
-            if (AccountVM?.IsDirty == true)
-            {
-                var result = MessageBox.Show(
-                    "You have unsaved changes. Save before exiting?",
-                    "Cash Projection",
-                    MessageBoxButton.YesNoCancel,
-                    MessageBoxImage.Question
-                );
-
-                if (result == MessageBoxResult.Cancel)
-                    return false;
-
-                if (result == MessageBoxResult.Yes)
-                    AccountVM.Save();
-            }
-
-            return true;
+            if (IsEditorOpen)
+                EditorVM?.CancelCommand.Execute(null);
+            else if (IsMatchReviewOpen)
+                MatchReviewVM?.CloseCommand.Execute(null);
+            else if (IsChangeHistoryOpen)
+                ChangeHistoryVM?.CloseCommand.Execute(null);
+            else if (IsPlaidSettingsOpen)
+                PlaidSettingsVM?.CloseCommand.Execute(null);
         }
 
-        [RelayCommand]
-        public void AddNew() => AccountVM?.AddNew();
-
-        [RelayCommand]
-        public void Save() => AccountVM.Save();
+        private void OpenEditor(ProjectionItemViewModel? target)
+        {
+            var vm = new ProjectionItemEditorViewModel(AccountVM, target);
+            vm.RequestClose += () =>
+            {
+                IsEditorOpen = false;
+                EditorVM = null;
+                AccountVM.FocusGridAfterPopoverClosed();
+            };
+            EditorVM = vm;
+            IsEditorOpen = true;
+        }
 
         [RelayCommand]
         public void Undo() => AccountVM.UndoCommand.Execute(null);
@@ -289,16 +354,28 @@ namespace CashProjection.ViewModels
         public void OpenHistory()
         {
             var vm = new ChangeHistoryViewModel(_changeHistory, AccountVM.ReloadTransactionsFromDatabase);
-            var window = new ChangeHistoryView(vm) { Owner = Application.Current?.MainWindow };
-            window.ShowDialog();
+            vm.RequestClose += () =>
+            {
+                IsChangeHistoryOpen = false;
+                ChangeHistoryVM = null;
+                AccountVM.FocusGridAfterPopoverClosed();
+            };
+            ChangeHistoryVM = vm;
+            IsChangeHistoryOpen = true;
         }
 
         [RelayCommand]
         public void OpenPlaidSettings()
         {
             var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService);
-            var window = new PlaidEnvironmentSettingsView(vm) { Owner = Application.Current?.MainWindow };
-            window.ShowDialog();
+            vm.RequestClose += () =>
+            {
+                IsPlaidSettingsOpen = false;
+                PlaidSettingsVM = null;
+                AccountVM.FocusGridAfterPopoverClosed();
+            };
+            PlaidSettingsVM = vm;
+            IsPlaidSettingsOpen = true;
         }
 
         [RelayCommand]
@@ -319,8 +396,14 @@ namespace CashProjection.ViewModels
             StatusVM.Report(foundMessage + expiredMessage, busy: false);
 
             var vm = new MatchReviewViewModel(_matchRepo, _itemRepo, _bankRepo, _changeHistory, AccountVM.ReloadTransactionsFromDatabase);
-            var window = new MatchReviewView(vm) { Owner = Application.Current?.MainWindow };
-            window.ShowDialog();
+            vm.RequestClose += () =>
+            {
+                IsMatchReviewOpen = false;
+                MatchReviewVM = null;
+                AccountVM.FocusGridAfterPopoverClosed();
+            };
+            MatchReviewVM = vm;
+            IsMatchReviewOpen = true;
         }
 
         // Update-mode reconnect: repairs the existing Plaid Item in place
@@ -429,6 +512,7 @@ namespace CashProjection.ViewModels
         public void CancelFind()
         {
             IsFindOpen = false;
+            AccountVM.FocusGridAfterPopoverClosed();
         }
 
         [RelayCommand]
@@ -505,7 +589,7 @@ namespace CashProjection.ViewModels
                 })
                 .Where(x => x.hits > 0)
                 .OrderByDescending(x => x.hits)
-                .ThenBy(x => x.vm.TransactionDate)
+                .ThenByDescending(x => x.vm.TransactionDate)
                 .ThenBy(x => x.vm.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(x => new SearchResult(x.vm, x.hits));
 

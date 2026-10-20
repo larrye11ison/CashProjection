@@ -40,15 +40,19 @@ namespace CashProjection.Services.Plaid
         // /transactions/sync walk no matter how many local Account rows
         // are passed in — each transaction gets routed to whichever of
         // them its own account_id matches.
-        public async Task SyncAsync(IReadOnlyList<Account> accounts)
+        // Returns the number of bank-transaction rows added/modified/removed
+        // by this pass, so callers can skip UI work that's only meaningful
+        // when something actually changed (most 10-minute periodic syncs
+        // find nothing new).
+        public async Task<int> SyncAsync(IReadOnlyList<Account> accounts)
         {
             if (accounts.Count == 0)
-                return;
+                return 0;
 
             var environment = _settings.GetEnvironment();
             var accessToken = _secretStores.AccessTokenStore.Get(PlaidLinkService.AccessTokenKey(environment));
             if (accessToken is null)
-                return;
+                return 0;
 
             _statusVM?.Report("Syncing transactions from your bank...", busy: true);
 
@@ -141,7 +145,7 @@ namespace CashProjection.Services.Plaid
                                 "Your bank connection needs to be reconnected — click \"Reconnect Bank\".",
                                 busy: false,
                                 StatusSeverity.Error);
-                            return;
+                            return 0;
                         }
 
                         throw new InvalidOperationException(
@@ -242,10 +246,12 @@ namespace CashProjection.Services.Plaid
                 }
 
                 _statusVM?.Report($"Synced {totalChanged} transaction update(s).", busy: false);
+                return totalChanged;
             }
             catch (Exception ex)
             {
                 _statusVM?.Report($"Sync failed: {ex.Message}", busy: false, StatusSeverity.Error);
+                return 0;
             }
         }
 

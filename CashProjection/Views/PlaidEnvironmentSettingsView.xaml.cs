@@ -1,14 +1,14 @@
 using System.Windows;
+using System.Windows.Controls;
 using CashProjection.ViewModels;
 
 namespace CashProjection.Views
 {
-    public partial class PlaidEnvironmentSettingsView : Window
+    public partial class PlaidEnvironmentSettingsView : UserControl
     {
-        public PlaidEnvironmentSettingsView(PlaidEnvironmentSettingsViewModel vm)
+        public PlaidEnvironmentSettingsView()
         {
             InitializeComponent();
-            DataContext = vm;
         }
 
         // PasswordBox.Password is deliberately not a bindable dependency

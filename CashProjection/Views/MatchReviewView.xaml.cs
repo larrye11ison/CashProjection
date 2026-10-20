@@ -4,12 +4,11 @@ using CashProjection.ViewModels;
 
 namespace CashProjection.Views
 {
-    public partial class MatchReviewView : Window
+    public partial class MatchReviewView : UserControl
     {
-        public MatchReviewView(MatchReviewViewModel vm)
+        public MatchReviewView()
         {
             InitializeComponent();
-            DataContext = vm;
         }
 
         private void AcceptButton_Click(object sender, RoutedEventArgs e)

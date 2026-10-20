@@ -21,10 +21,14 @@ namespace CashProjection.Services
                 parts.Add($"Payment: {FormatAmount(before.Payment)} → {FormatAmount(after.Payment)}");
             if (before.Periodicity != after.Periodicity)
                 parts.Add($"Periodicity: {before.Periodicity} → {after.Periodicity}");
+            if (before.MatchText != after.MatchText)
+                parts.Add($"Match pattern: {FormatText(before.MatchText)} → {FormatText(after.MatchText)}");
 
             return parts.Count > 0 ? string.Join("; ", parts) : "No field changes detected";
         }
 
         private static string FormatAmount(decimal? value) => value.HasValue ? value.Value.ToString("C2") : "(none)";
+
+        private static string FormatText(string? value) => string.IsNullOrEmpty(value) ? "(none)" : $"'{value}'";
     }
 }

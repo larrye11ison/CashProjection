@@ -23,10 +23,6 @@
     <!--  Keyboard shortcuts  -->
     <Window.InputBindings>
         <KeyBinding
-            Key="S"
-            Command="{Binding SaveCommand}"
-            Modifiers="Control" />
-        <KeyBinding
             Key="F"
             Command="{Binding OpenFindCommand}"
             Modifiers="Control" />
@@ -38,6 +34,7 @@
             Key="Y"
             Command="{Binding RedoCommand}"
             Modifiers="Control" />
+        <KeyBinding Key="F2" Command="{Binding EditSelectedCommand}" />
     </Window.InputBindings>
 
     <Grid>
@@ -52,14 +49,19 @@
                         Content="Add New"
                         IsEnabled="{Binding IsCheckingSelected}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Add a new transaction" />
-                    <Separator />
+                        ToolTip="Add a new projection item" />
                     <Button
-                        Command="{Binding SaveCommand}"
-                        Content="Save"
+                        Command="{Binding EditSelectedCommand}"
+                        Content="Edit"
                         IsEnabled="{Binding IsCheckingSelected}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Save to OneDrive (Ctrl+S)" />
+                        ToolTip="Edit the selected item (F2)" />
+                    <Button
+                        Command="{Binding PushForwardSelectedCommand}"
+                        Content="Push Forward"
+                        IsEnabled="{Binding IsCheckingSelected}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Push the selected item forward by its periodicity" />
                     <Separator />
                     <Button
                         Command="{Binding OpenFindCommand}"
@@ -353,10 +355,18 @@
                                         behaviors:GridViewColumnResize.Width="Auto"
                                         DisplayMemberBinding="{Binding Item.TransactionDate, StringFormat=d}"
                                         Header="Date" />
-                                    <GridViewColumn
-                                        behaviors:GridViewColumnResize.Width="*"
-                                        DisplayMemberBinding="{Binding Item.Name}"
-                                        Header="Name" />
+                                    <!--
+                                        Vendor-name/raw-description styling
+                                        here lives in exactly one place:
+                                        DualLineNameTemplate in App.xaml.
+                                    -->
+                                    <GridViewColumn behaviors:GridViewColumnResize.Width="*" Header="Name">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ContentControl Content="{Binding Item}" ContentTemplate="{StaticResource DualLineNameTemplate}" />
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
                                     <GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Deposit">
                                         <GridViewColumn.CellTemplate>
                                             <DataTemplate>
@@ -384,17 +394,85 @@
                                 Margin="0,0,8,0"
                                 Command="{Binding ConfirmFindCommand}"
                                 Content="OK"
-                                IsDefault="True"
                                 Style="{StaticResource MaterialDesignRaisedButton}" />
                             <Button
                                 Command="{Binding CancelFindCommand}"
                                 Content="Cancel"
-                                IsCancel="True"
                                 Style="{StaticResource MaterialDesignRaisedButton}" />
                         </StackPanel>
                     </Grid>
                 </materialDesign:Card>
             </Grid>
+        </Grid>
+
+        <!--  Modal Change History overlay  -->
+        <Grid
+            Panel.ZIndex="100"
+            Background="#80000000"
+            IsVisibleChanged="Overlay_IsVisibleChanged"
+            PreviewKeyDown="Overlay_PreviewKeyDown"
+            Visibility="{Binding IsChangeHistoryOpen, Converter={StaticResource BoolToVis}}">
+            <materialDesign:Card
+                Width="900"
+                Height="560"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource MaterialDesignPaper}"
+                UniformCornerRadius="6">
+                <views:ChangeHistoryView DataContext="{Binding ChangeHistoryVM}" />
+            </materialDesign:Card>
+        </Grid>
+
+        <!--  Modal Match Review overlay  -->
+        <Grid
+            Panel.ZIndex="100"
+            Background="#80000000"
+            IsVisibleChanged="Overlay_IsVisibleChanged"
+            PreviewKeyDown="Overlay_PreviewKeyDown"
+            Visibility="{Binding IsMatchReviewOpen, Converter={StaticResource BoolToVis}}">
+            <materialDesign:Card
+                Width="820"
+                Height="560"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource MaterialDesignPaper}"
+                UniformCornerRadius="6">
+                <views:MatchReviewView DataContext="{Binding MatchReviewVM}" />
+            </materialDesign:Card>
+        </Grid>
+
+        <!--  Modal Plaid Environment Settings overlay  -->
+        <Grid
+            Panel.ZIndex="100"
+            Background="#80000000"
+            IsVisibleChanged="Overlay_IsVisibleChanged"
+            PreviewKeyDown="Overlay_PreviewKeyDown"
+            Visibility="{Binding IsPlaidSettingsOpen, Converter={StaticResource BoolToVis}}">
+            <materialDesign:Card
+                Width="520"
+                Height="520"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource MaterialDesignPaper}"
+                UniformCornerRadius="6">
+                <views:PlaidEnvironmentSettingsView DataContext="{Binding PlaidSettingsVM}" />
+            </materialDesign:Card>
+        </Grid>
+
+        <!--  Modal projection item editor overlay  -->
+        <Grid
+            Panel.ZIndex="100"
+            Background="#80000000"
+            IsVisibleChanged="EditorOverlay_IsVisibleChanged"
+            KeyDown="EditorOverlay_KeyDown"
+            Visibility="{Binding IsEditorOpen, Converter={StaticResource BoolToVis}}">
+            <materialDesign:Card
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource MaterialDesignPaper}"
+                UniformCornerRadius="6">
+                <views:ProjectionItemEditorView DataContext="{Binding EditorVM}" />
+            </materialDesign:Card>
         </Grid>
     </Grid>
 </Window>

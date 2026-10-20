@@ -14,6 +14,8 @@
                 <!--  Control-specific themes  -->
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.TextBox.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Button.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ComboBox.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.DatePicker.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.DataGrid.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Card.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.ListBox.xaml" />
@@ -56,6 +58,34 @@
                 <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource PrimaryHueLightForegroundBrush}" />
             </Style>
+
+            <BooleanToVisibilityConverter x:Key="SharedBoolToVis" />
+
+            <!--
+                The ONE place controlling how every list in the app (the
+                checking grid, other-account transactions, Match Review's
+                candidates, Find's results) shows a real bank row's vendor
+                name vs. the bank's own raw description — primary line on
+                top, secondary line below only when it's actually set and
+                differs from the primary. Bound via SecondaryDisplayText/
+                HasDistinctSecondaryText, which both ProjectionItemViewModel
+                and BankTransaction expose as aliases over their own
+                differently-named properties (Name/Description), so this
+                template works unmodified against either type. Change
+                anything about how this distinction looks — font size,
+                opacity, spacing — here, once, and every list picks it up.
+            -->
+            <DataTemplate x:Key="DualLineNameTemplate">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding PrimaryDisplayName}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        FontSize="11"
+                        Opacity="0.65"
+                        Text="{Binding SecondaryDisplayText}"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="{Binding HasDistinctSecondaryText, Converter={StaticResource SharedBoolToVis}}" />
+                </StackPanel>
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

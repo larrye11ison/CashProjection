@@ -22,17 +22,17 @@ A modern WPF desktop application for managing and projecting cash flow over time
 
 ### ? Productivity Features
 - **Keyboard Shortcuts**:
-  - `Ctrl+S` - Save
   - `Ctrl+F` - Find transactions
+  - `F2` - Edit the selected projection item
 - **Quick Actions**:
+  - Edit: open the selected projection item in a popover editor — Save writes it to the database immediately (also Delete from there)
   - Push Forward: Move recurring transactions by their periodicity
-  - Delete with confirmation
-  - Add new transactions with auto-focus
-- **Smart Search**: Find transactions by name with instant results and keyboard navigation
+  - Add new transactions via the same popover editor
+- **Smart Search**: Find transactions by name with instant results and keyboard navigation, newest first
 
 ### ?? Data Management
 - Local SQLite database, stored in OneDrive (with fallback to Documents folder)
-- Auto-save prompt on exit if changes are pending
+- Every add/edit/delete/push-forward writes through immediately — there's no separate save step or pending-changes state
 
 ## Tech Stack
 
@@ -70,24 +70,26 @@ A modern WPF desktop application for managing and projecting cash flow over time
 
 ### First Launch
 
-On first launch, you'll be walked through connecting a bank account via Plaid — this is required before the app shows anything, since it's how the account balance and real transactions get in. After that, you can:
-- Add, modify, or delete recurring projection items
-- Use `Ctrl+S` to save your changes
+On first launch, you'll be walked through connecting a bank account via Plaid — this is required before the app shows anything, since it's how the account balance and real transactions get in. After that, you can add, modify, or delete recurring projection items — each change is written to the database as soon as you make it.
 
 ## Usage
 
-### Adding Transactions
+### Adding, Editing, and Deleting Transactions
 
-1. Click the **Add New** button in the toolbar (or add a row at the bottom of the grid)
+The projection grid itself is read-only — all changes go through a popover editor:
+
+1. Click **Add New** in the toolbar to create a transaction, or select an existing one and click **Edit** (or press `F2`)
 2. Enter the transaction details:
-   - **Date**: Transaction date
    - **Name**: Description of the transaction
+   - **Date**: Transaction date
    - **Deposit** or **Payment**: Enter the amount (mutually exclusive)
    - **Periodicity**: Select how often this transaction recurs
+   - **Match pattern**: Optional text used instead of the name when matching this item to a real bank transaction
+3. Click **Save** (or press `Enter`) to write it to the database and close the editor, or **Delete** to remove an existing item (with confirmation)
 
 ### Managing Recurring Transactions
 
-Use the **Push Forward** button (?) to automatically advance a transaction by its periodicity:
+Select a transaction and click **Push Forward** in the toolbar to automatically advance it by its periodicity:
 - Monthly transactions move forward 1 month
 - Quarterly transactions move forward 3 months
 - "Two weeks past last" will find the last transaction whose name matches the item being "pushed," then will reschedule it for two weeks beyond that. This is typically used for cases where you get a paycheque every two weeks.
