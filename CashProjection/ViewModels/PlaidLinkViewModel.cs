@@ -1,5 +1,4 @@
-using System.Windows;
-using System.Windows.Threading;
+using Microsoft.UI.Dispatching;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CashProjection.Services.Plaid;
 
@@ -12,6 +11,7 @@ namespace CashProjection.ViewModels
 
         private readonly PlaidLinkService _linkService;
         private readonly bool _isUpdateMode;
+        private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         private CancellationTokenSource? _pollCts;
         private string? _linkToken;
 
@@ -65,7 +65,7 @@ namespace CashProjection.ViewModels
 
                 SetStatus($"Could not start Plaid {(_isUpdateMode ? "reconnect" : "Link")}: {ex.Message}");
                 Succeeded = false;
-                RequestClose?.Invoke(this, EventArgs.Empty);
+                RaiseRequestClose();
             }
         }
 
@@ -154,7 +154,7 @@ namespace CashProjection.ViewModels
                 SetStatus($"Could not finish connecting: {ex.Message}");
                 Succeeded = false;
             }
-            RequestClose?.Invoke(this, EventArgs.Empty);
+            RaiseRequestClose();
         }
 
         // Update mode success: the Item was repaired in place. No token
@@ -164,7 +164,7 @@ namespace CashProjection.ViewModels
             StopPolling();
             Succeeded = true;
             SetStatus("Reconnected.");
-            RequestClose?.Invoke(this, EventArgs.Empty);
+            RaiseRequestClose();
         }
 
         public void OnExit(string? errorMessage)
@@ -172,18 +172,28 @@ namespace CashProjection.ViewModels
             StopPolling();
             SetStatus(errorMessage ?? $"{(_isUpdateMode ? "Reconnect" : "Link")} was closed before completing.");
             Succeeded = false;
-            RequestClose?.Invoke(this, EventArgs.Empty);
+            RaiseRequestClose();
         }
 
-        // StatusMessage is bound in the view; WPF bindings require updates to
-        // originate on the UI thread, but polling runs on a background task.
+        // StatusMessage is bound in the view; XAML bindings require updates
+        // to originate on the UI thread, but polling runs on a background task.
         private void SetStatus(string message)
         {
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher is null || dispatcher.CheckAccess())
+            if (_dispatcherQueue.HasThreadAccess)
                 StatusMessage = message;
             else
-                dispatcher.Invoke(() => StatusMessage = message);
+                _dispatcherQueue.TryEnqueue(() => StatusMessage = message);
+        }
+
+        // RequestClose drives closing an actual Window — same UI-thread
+        // requirement as SetStatus, and the same callers (background
+        // polling) can raise it off-thread.
+        private void RaiseRequestClose()
+        {
+            if (_dispatcherQueue.HasThreadAccess)
+                RequestClose?.Invoke(this, EventArgs.Empty);
+            else
+                _dispatcherQueue.TryEnqueue(() => RequestClose?.Invoke(this, EventArgs.Empty));
         }
     }
 }

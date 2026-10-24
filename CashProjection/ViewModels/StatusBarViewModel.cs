@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml;
 
 namespace CashProjection.ViewModels
 {
@@ -18,7 +19,14 @@ namespace CashProjection.ViewModels
         private string _currentMessage = "Ready";
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(BusyVisibility))]
         private bool _isBusy;
+
+        // Window-rooted XAML can't use a Converter inside {x:Bind} (the
+        // generated binding code needs a FrameworkElement "converter
+        // lookup root," and Window — unlike WPF's — isn't one), so the
+        // already-converted value is exposed directly instead.
+        public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
 
         [ObservableProperty]
         private StatusSeverity _severity = StatusSeverity.Info;

@@ -1,16 +1,19 @@
 using System;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue;
+using DispatcherQueuePriority = Microsoft.UI.Dispatching.DispatcherQueuePriority;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 using CashProjection.Data.Repositories;
 using CashProjection.Models;
 using CashProjection.Services;
+using CashProjection.Services.Dialogs;
 using CashProjection.Services.Matching;
 using CashProjection.Services.Plaid;
 using CashProjection.Services.Secrets;
@@ -31,6 +34,8 @@ namespace CashProjection.ViewModels
         private readonly PlaidSettingsService _plaidSettings;
         private readonly SecretStoreFactory _secretStores;
         private readonly UnseenTransactionsTracker _unseenTracker;
+        private readonly IDialogService _dialogService;
+        private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         private readonly DispatcherTimer _syncTimer;
 
         // Guards RunBackgroundSyncAsync against overlap: the periodic timer,
@@ -39,8 +44,6 @@ namespace CashProjection.ViewModels
         // safe to walk concurrently from two callers at once. 0 = idle,
         // 1 = a sync is in flight.
         private int _isSyncing;
-
-        private WeakReference<FrameworkElement>? _viewRef;
 
         [ObservableProperty]
         private bool _isFindOpen;
@@ -103,7 +106,8 @@ namespace CashProjection.ViewModels
             AccountRepository accountRepo,
             PlaidSettingsService plaidSettings,
             SecretStoreFactory secretStores,
-            UnseenTransactionsTracker unseenTracker)
+            UnseenTransactionsTracker unseenTracker,
+            IDialogService dialogService)
         {
             StatusVM = statusVM;
             AccountVM = accountVM;
@@ -118,6 +122,7 @@ namespace CashProjection.ViewModels
             _syncService = syncService;
             _accountRepo = accountRepo;
             _unseenTracker = unseenTracker;
+            _dialogService = dialogService;
             SearchResults = new ObservableCollection<SearchResult>();
             Accounts = new ObservableCollection<AccountListItemViewModel>(
                 accountRepo.GetAll().Select(a => new AccountListItemViewModel(a)));
@@ -163,6 +168,13 @@ namespace CashProjection.ViewModels
 
         public bool IsOtherAccountSelected => SelectedAccount is not null && !IsCheckingSelected;
 
+        // Window-rooted XAML can't use a Converter inside {x:Bind} (the
+        // generated binding code needs a FrameworkElement "converter
+        // lookup root," and Window — unlike WPF's — isn't one), so the
+        // already-converted values are exposed directly instead.
+        public Visibility CheckingVisibility => IsCheckingSelected ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility OtherAccountVisibility => IsOtherAccountSelected ? Visibility.Visible : Visibility.Collapsed;
+
         // The shared header's balance block — sourced directly from
         // SelectedAccount (which already carries StartingBalance/
         // StartingBalanceAsOf) rather than proxying through AccountVM or
@@ -180,6 +192,8 @@ namespace CashProjection.ViewModels
         {
             OnPropertyChanged(nameof(IsCheckingSelected));
             OnPropertyChanged(nameof(IsOtherAccountSelected));
+            OnPropertyChanged(nameof(CheckingVisibility));
+            OnPropertyChanged(nameof(OtherAccountVisibility));
             OnPropertyChanged(nameof(SelectedAccountBalanceLine));
             OnPropertyChanged(nameof(SelectedAccountBalanceAsOfLine));
 
@@ -272,27 +286,36 @@ namespace CashProjection.ViewModels
                 if (changedCount > 0)
                     _matchingService.FindAndRecordPresumptiveMatches(AccountVM.AccountId);
 
-                await Application.Current!.Dispatcher.InvokeAsync(() =>
+                var tcs = new TaskCompletionSource();
+                _dispatcherQueue.TryEnqueue(() =>
                 {
-                    // Always refreshed, even when nothing new came down —
-                    // this updates the balance/"as of" figures in place on
-                    // the existing view-model objects (every sync re-reads
-                    // the account's current balance from Plaid), so it
-                    // never visibly disturbs the grid.
-                    AccountVM.RefreshAccountFromDatabase();
-                    RefreshSelectedAccountHeader();
-
-                    // ReloadTransactionsFromDatabase/RefreshOtherAccountView
-                    // clear and rebuild their collections from scratch —
-                    // visible as a flash in the grid — so skip them on the
-                    // (overwhelmingly common) periodic pass that found
-                    // nothing new to show.
-                    if (changedCount > 0)
+                    try
                     {
-                        AccountVM.ReloadTransactionsFromDatabase();
-                        RefreshOtherAccountView();
+                        // Always refreshed, even when nothing new came down —
+                        // this updates the balance/"as of" figures in place on
+                        // the existing view-model objects (every sync re-reads
+                        // the account's current balance from Plaid), so it
+                        // never visibly disturbs the grid.
+                        AccountVM.RefreshAccountFromDatabase();
+                        RefreshSelectedAccountHeader();
+
+                        // ReloadTransactionsFromDatabase/RefreshOtherAccountView
+                        // clear and rebuild their collections from scratch —
+                        // visible as a flash in the grid — so skip them on the
+                        // (overwhelmingly common) periodic pass that found
+                        // nothing new to show.
+                        if (changedCount > 0)
+                        {
+                            AccountVM.ReloadTransactionsFromDatabase();
+                            RefreshOtherAccountView();
+                        }
+                    }
+                    finally
+                    {
+                        tcs.SetResult();
                     }
                 });
+                await tcs.Task;
             }
             finally
             {
@@ -303,11 +326,6 @@ namespace CashProjection.ViewModels
         partial void OnFindTextChanged(string value)
         {
             UpdateSearchResults();
-        }
-
-        public void SetViewReference(FrameworkElement view)
-        {
-            _viewRef = new WeakReference<FrameworkElement>(view);
         }
 
         [RelayCommand]
@@ -388,7 +406,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenHistory()
         {
-            var vm = new ChangeHistoryViewModel(_changeHistory, AccountVM.ReloadTransactionsFromDatabase);
+            var vm = new ChangeHistoryViewModel(_changeHistory, _dialogService, AccountVM.ReloadTransactionsFromDatabase);
             vm.RequestClose += () =>
             {
                 IsChangeHistoryOpen = false;
@@ -402,7 +420,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenPlaidSettings()
         {
-            var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService);
+            var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService, _dialogService);
             vm.RequestClose += () =>
             {
                 IsPlaidSettingsOpen = false;
@@ -446,11 +464,11 @@ namespace CashProjection.ViewModels
         // Available any time — not just when a sync has flagged a problem —
         // so a stale connection can be fixed proactively too.
         [RelayCommand]
-        public void ReconnectBank()
+        public async Task ReconnectBank()
         {
             var linkVm = new PlaidLinkViewModel(_linkService, isUpdateMode: true);
-            var window = new PlaidLinkWindow(linkVm) { Owner = Application.Current?.MainWindow };
-            window.ShowDialog();
+            var window = new PlaidLinkWindow(linkVm);
+            await window.ShowAndWaitAsync();
 
             if (!linkVm.Succeeded)
                 return;
@@ -459,75 +477,6 @@ namespace CashProjection.ViewModels
             _ = RunBackgroundSyncAsync();
         }
 
-#if DEBUG
-        public bool IsDebugBuild => true;
-
-        // DEV-ONLY: forces the Sandbox Item into ITEM_LOGIN_REQUIRED (via
-        // Plaid's sandbox-only simulation endpoint) and immediately syncs,
-        // so the "Reconnect Bank" update-mode flow can be proven out safely
-        // before ever touching a real bank connection.
-        [RelayCommand]
-        public async System.Threading.Tasks.Task SimulateReconnectNeeded()
-        {
-            StatusVM.Report("Simulating a broken bank connection (Sandbox only)...", busy: true);
-            var result = await _syncService.SimulateItemLoginRequiredAsync();
-            StatusVM.Report(result, busy: false);
-
-            await _syncService.SyncAsync(_accountRepo.GetAll());
-        }
-
-        [RelayCommand]
-        public void RunMatchingTest()
-        {
-            const string csvPath = @"C:\Users\pj\Downloads\statement_Chevron_Federal_Credit_Union_0900_07_01_2026_to_10_11_2026.csv";
-            if (!System.IO.File.Exists(csvPath))
-            {
-                MessageBox.Show($"CSV not found at:\n{csvPath}", "Matching Test", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var rows = Services.DevTools.ChevronCsvTestImporter.Load(csvPath);
-            var lines = new System.Collections.Generic.List<string>();
-            var itemsWithNoDateOverlap = 0;
-            var itemsWithNoAmountSignMatch = 0;
-
-            foreach (var item in AccountVM.Transactions)
-            {
-                var matchText = string.IsNullOrWhiteSpace(item.MatchText) ? item.Name : item.MatchText;
-                var isPayment = item.Payment.HasValue;
-
-                var withinDateWindow = rows.Where(r => (r.Date.Date - item.TransactionDate.Date).Duration().TotalDays <= 10).ToList();
-                if (withinDateWindow.Count == 0)
-                {
-                    itemsWithNoDateOverlap++;
-                    continue;
-                }
-
-                var sameDirection = withinDateWindow.Where(r => (r.Amount > 0) == isPayment).ToList();
-                if (sameDirection.Count == 0)
-                {
-                    itemsWithNoAmountSignMatch++;
-                    continue;
-                }
-
-                var best = sameDirection
-                    .Select(r => new { Row = r, Score = FuzzySharp.Fuzz.PartialTokenSetRatio(matchText, r.Description) })
-                    .OrderByDescending(x => x.Score)
-                    .First();
-
-                lines.Add($"{item.Name} ({item.TransactionDate:d}, {(isPayment ? "payment" : "deposit")}) -> {best.Row.Description} ({best.Row.Date:d})  score={best.Score}");
-            }
-
-            var summary = $"Loaded {rows.Count} CSV rows and {AccountVM.Transactions.Count} projection item(s).\n" +
-                $"{itemsWithNoDateOverlap} item(s) had no CSV row within ±10 days.\n" +
-                $"{itemsWithNoAmountSignMatch} item(s) had date overlap but no row matching payment/deposit direction.\n\n";
-
-            var message = summary + (lines.Count > 0 ? string.Join("\n", lines) : "No projection item cleared both the date and amount-direction filters.");
-            MessageBox.Show(message, $"Matching test — {rows.Count} CSV rows loaded", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-#else
-        public bool IsDebugBuild => false;
-#endif
 
         [RelayCommand]
         public void OpenFind()
@@ -536,11 +485,6 @@ namespace CashProjection.ViewModels
             FindText = string.Empty;
             SearchResults.Clear();
             SelectedSearchResult = null;
-
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(FocusFindTextBox)
-            );
         }
 
         [RelayCommand]
@@ -561,26 +505,26 @@ namespace CashProjection.ViewModels
             AccountVM.FocusTransaction(target);
         }
 
-        public void OnFindKeyDown(KeyEventArgs e)
+        public void OnFindKeyDown(KeyRoutedEventArgs e)
         {
             if (!IsFindOpen)
                 return;
 
             switch (e.Key)
             {
-                case Key.Enter:
+                case VirtualKey.Enter:
                     e.Handled = true;
                     ConfirmFind();
                     break;
-                case Key.Escape:
+                case VirtualKey.Escape:
                     e.Handled = true;
                     CancelFind();
                     break;
-                case Key.Down:
+                case VirtualKey.Down:
                     e.Handled = true;
                     MoveSelection(+1);
                     break;
-                case Key.Up:
+                case VirtualKey.Up:
                     e.Handled = true;
                     MoveSelection(-1);
                     break;
@@ -636,26 +580,13 @@ namespace CashProjection.ViewModels
                 SelectedSearchResult = SearchResults[0];
         }
 
-        private void FocusFindTextBox()
-        {
-            if (_viewRef != null && _viewRef.TryGetTarget(out var fe))
-            {
-                if (fe.FindName("FindTextBox") is TextBox tb)
-                {
-                    tb.Focus();
-                    tb.SelectAll();
-                    Keyboard.Focus(tb);
-                }
-            }
-        }
-
         public sealed class SearchResult
         {
             public SearchResult(ProjectionItemViewModel item, int hits)
             {
                 Item = item;
                 Hits = hits;
-                Display = $"{item.TransactionDate:d}  �  {item.Name}";
+                Display = $"{item.TransactionDate:d}  •  {item.Name}";
             }
 
             public ProjectionItemViewModel Item { get; }

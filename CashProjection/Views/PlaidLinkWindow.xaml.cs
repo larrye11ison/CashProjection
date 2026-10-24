@@ -1,32 +1,55 @@
-using System.Windows;
+using Microsoft.UI.Xaml;
 using CashProjection.ViewModels;
 
 namespace CashProjection.Views
 {
-    public partial class PlaidLinkWindow : Window
+    public sealed partial class PlaidLinkWindow : Window
     {
-        private readonly PlaidLinkViewModel _vm;
+        private readonly TaskCompletionSource _closedTcs = new();
+
+        public PlaidLinkViewModel ViewModel { get; }
 
         public PlaidLinkWindow(PlaidLinkViewModel vm)
         {
             InitializeComponent();
 
-            _vm = vm;
-            DataContext = vm;
-            vm.RequestClose += (_, _) => Dispatcher.BeginInvoke(Close);
+            ViewModel = vm;
+            Title = "Connect your bank account";
+            WindowBackdropHelper.ApplyMica(this);
 
-            Loaded += PlaidLinkWindow_Loaded;
-            Closing += (_, _) => _vm.StopPolling();
+            vm.RequestClose += (_, _) => DispatcherQueue.TryEnqueue(Close);
+
+            Activated += PlaidLinkWindow_Activated;
+            Closed += (_, _) =>
+            {
+                ViewModel.StopPolling();
+                _closedTcs.TrySetResult();
+            };
         }
 
-        private async void PlaidLinkWindow_Loaded(object sender, RoutedEventArgs e)
+        // The window-closing wait this exposes is what callers (ShellViewModel.
+        // ReconnectBank, App startup) await instead of the WPF-only
+        // Window.ShowDialog() pattern — WinUI windows have no built-in modal
+        // "block until closed" API.
+        public Task ShowAndWaitAsync()
         {
+            Activate();
+            return _closedTcs.Task;
+        }
+
+        private bool _initialized;
+
+        private async void PlaidLinkWindow_Activated(object sender, WindowActivatedEventArgs e)
+        {
+            if (_initialized)
+                return;
+            _initialized = true;
+
             await WebView.EnsureCoreWebView2Async();
+            await ViewModel.InitializeAsync();
 
-            await _vm.InitializeAsync();
-
-            if (_vm.HostedLinkUrl is not null)
-                WebView.Source = new Uri(_vm.HostedLinkUrl);
+            if (ViewModel.HostedLinkUrl is not null)
+                WebView.Source = new Uri(ViewModel.HostedLinkUrl);
         }
     }
 }

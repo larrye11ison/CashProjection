@@ -2,499 +2,253 @@
     x:Class="CashProjection.Views.ShellView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:behaviors="clr-namespace:CashProjection.Behaviors"
-    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-    xmlns:models="clr-namespace:CashProjection.Models"
-    xmlns:vm="clr-namespace:CashProjection.ViewModels"
-    xmlns:views="clr-namespace:CashProjection.Views"
-    Title="Cash Projection"
-    Width="1000"
-    Height="700"
-    Background="{DynamicResource MaterialDesignPaper}"
-    Foreground="{DynamicResource MaterialDesignBody}"
-    Icon="{StaticResource AppIconImage}"
-    WindowStartupLocation="CenterScreen">
+    xmlns:shapes="using:Microsoft.UI.Xaml.Shapes"
+    xmlns:views="using:CashProjection.Views">
 
-    <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
-        <models:WindowWidthToAccountComboWidthConverter x:Key="AccountComboWidthConverter" />
-    </Window.Resources>
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-    <!--  Keyboard shortcuts  -->
-    <Window.InputBindings>
-        <KeyBinding
-            Key="F"
-            Command="{Binding OpenFindCommand}"
-            Modifiers="Control" />
-        <KeyBinding
-            Key="Z"
-            Command="{Binding UndoCommand}"
-            Modifiers="Control" />
-        <KeyBinding
-            Key="Y"
-            Command="{Binding RedoCommand}"
-            Modifiers="Control" />
-        <KeyBinding Key="F2" Command="{Binding EditSelectedCommand}" />
-    </Window.InputBindings>
+        <!--  Toolbar  -->
+        <CommandBar
+            Grid.Row="0"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            DefaultLabelPosition="Right"
+            IsOpen="False">
+            <AppBarButton
+                Command="{x:Bind ViewModel.AddNewCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Add New"
+                ToolTipService.ToolTip="Add a new projection item">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Add" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.EditSelectedCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Edit"
+                ToolTipService.ToolTip="Edit the selected item (F2)">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Edit" />
+                </AppBarButton.Icon>
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="F2" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.PushForwardSelectedCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Push Forward"
+                ToolTipService.ToolTip="Push the selected item forward by its periodicity">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Forward" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.CorrectBalanceSelectedCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Correct Balance"
+                ToolTipService.ToolTip="Manually override the selected real transaction's balance — only when Plaid's reported/estimated balance is wrong">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Repair" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarSeparator />
+            <AppBarButton
+                Command="{x:Bind ViewModel.OpenFindCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Find"
+                ToolTipService.ToolTip="Find transactions (Ctrl+F)">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Find" />
+                </AppBarButton.Icon>
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="F" Modifiers="Control" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarSeparator />
+            <AppBarButton
+                Command="{x:Bind ViewModel.UndoCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Undo"
+                ToolTipService.ToolTip="Undo the most recent change (Ctrl+Z)">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Undo" />
+                </AppBarButton.Icon>
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Z" Modifiers="Control" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.RedoCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Redo"
+                ToolTipService.ToolTip="Redo the last undone change (Ctrl+Y)">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Redo" />
+                </AppBarButton.Icon>
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Y" Modifiers="Control" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.OpenHistoryCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="History"
+                ToolTipService.ToolTip="View change history (Ctrl+H)">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE81C;" />
+                </AppBarButton.Icon>
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="H" Modifiers="Control" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.OpenMatchesCommand}"
+                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                Label="Matches"
+                ToolTipService.ToolTip="Review presumptive matches between projections and real bank transactions (Ctrl+M)">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE71B;" />
+                </AppBarButton.Icon>
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="M" Modifiers="Control" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
+            <AppBarSeparator />
+            <AppBarButton
+                Command="{x:Bind ViewModel.ReconnectBankCommand}"
+                Label="Reconnect Bank"
+                ToolTipService.ToolTip="Repair the existing Plaid connection in place (update mode) — never creates a new connection or uses another slot">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Sync" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton
+                Command="{x:Bind ViewModel.OpenPlaidSettingsCommand}"
+                Label="Plaid Settings"
+                ToolTipService.ToolTip="Switch between Sandbox and Production, and manage Production credentials">
+                <AppBarButton.Icon>
+                    <SymbolIcon Symbol="Setting" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+        </CommandBar>
 
-    <Grid>
-        <DockPanel>
-            <materialDesign:ColorZone
-                Padding="8"
-                DockPanel.Dock="Top"
-                Mode="PrimaryMid">
-                <ToolBar Background="Transparent">
-                    <Button
-                        Command="{Binding AddNewCommand}"
-                        Content="Add New"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Add a new projection item" />
-                    <Button
-                        Command="{Binding EditSelectedCommand}"
-                        Content="Edit"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Edit the selected item (F2)" />
-                    <Button
-                        Command="{Binding PushForwardSelectedCommand}"
-                        Content="Push Forward"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Push the selected item forward by its periodicity" />
-                    <Button
-                        Command="{Binding CorrectBalanceSelectedCommand}"
-                        Content="Correct Balance"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Manually override the selected real transaction's balance — only when Plaid's reported/estimated balance is wrong" />
-                    <Separator />
-                    <Button
-                        Command="{Binding OpenFindCommand}"
-                        Content="Find"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Find transactions (Ctrl+F)" />
-                    <Separator />
-                    <Button
-                        Command="{Binding UndoCommand}"
-                        Content="Undo"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Undo the most recent change (Ctrl+Z)" />
-                    <Button
-                        Command="{Binding RedoCommand}"
-                        Content="Redo"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Redo the last undone change (Ctrl+Y)" />
-                    <Button
-                        Command="{Binding OpenHistoryCommand}"
-                        Content="History"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="View change history" />
-                    <Button
-                        Command="{Binding OpenMatchesCommand}"
-                        Content="Matches"
-                        IsEnabled="{Binding IsCheckingSelected}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Review presumptive matches between projections and real bank transactions" />
-                    <Separator />
-                    <Button
-                        Command="{Binding ReconnectBankCommand}"
-                        Content="Reconnect Bank"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Repair the existing Plaid connection in place (update mode) — never creates a new connection or uses another slot" />
-                    <Button
-                        Command="{Binding OpenPlaidSettingsCommand}"
-                        Content="Plaid Settings"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Switch between Sandbox and Production, and manage Production credentials" />
-                    <Button
-                        Command="{Binding RunMatchingTestCommand}"
-                        Content="Test Matching (Dev)"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Dev-only: score projection items against the downloaded Chevron CSV"
-                        Visibility="{Binding IsDebugBuild, Converter={StaticResource BoolToVis}}" />
-                    <Button
-                        Command="{Binding SimulateReconnectNeededCommand}"
-                        Content="Simulate Reconnect Needed (Dev)"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        ToolTip="Dev-only, Sandbox-only: forces ITEM_LOGIN_REQUIRED so the Reconnect Bank flow can be tested safely"
-                        Visibility="{Binding IsDebugBuild, Converter={StaticResource BoolToVis}}" />
-                </ToolBar>
-            </materialDesign:ColorZone>
-
-            <materialDesign:ColorZone
-                Padding="12,10"
-                DockPanel.Dock="Bottom"
-                Mode="PrimaryMid">
-                <DockPanel LastChildFill="True">
-                    <ProgressBar
-                        Width="120"
-                        Height="4"
-                        Margin="12,0,0,0"
-                        DockPanel.Dock="Right"
-                        IsIndeterminate="{Binding StatusVM.IsBusy}"
-                        Visibility="{Binding StatusVM.IsBusy, Converter={StaticResource BoolToVis}}" />
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        FontSize="13"
-                        FontWeight="Bold"
-                        Text="{Binding StatusVM.CurrentMessage}" />
-                </DockPanel>
-            </materialDesign:ColorZone>
-
-            <DockPanel>
-                <!--
-                    Shared header for both account types: the account
-                    switcher doubles as the page title (no separate "Account
-                    Name" label), with the balance block sourced straight
-                    from ShellViewModel.SelectedAccount so it works
-                    identically whether checking or a read-only account is
-                    selected.
-                -->
-                <Grid
-                    Margin="20,16,20,0"
-                    DockPanel.Dock="Top">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <!--
-                        The width constraint lives on this wrapper, not on the
-                        ComboBox itself — MaterialDesign's ComboBox style has its
-                        own internal logic touching its Width (tied to the
-                        floating-label/popup machinery), which fought with a
-                        directly-bound Width and only resolved once the dropdown
-                        was opened and forced a re-layout. A plain Border has no
-                        such triggers, so it reliably holds the bound width from
-                        the first frame, and the ComboBox just stretches to fill it
-                        — which also keeps the closed box and the open popup
-                        (sized off the control's own ActualWidth) in agreement.
-                    -->
-                    <Border
-                        Grid.Column="0"
-                        Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource AccountComboWidthConverter}}"
-                        HorizontalAlignment="Left">
-                    <ComboBox
-                        Height="48"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        VerticalAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        ItemsSource="{Binding Accounts}"
-                        SelectedItem="{Binding SelectedAccountEntry}"
-                        ToolTip="Switch between linked accounts">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <!--  New-transactions badge — cleared the moment this account is selected.  -->
-                                    <Ellipse
-                                        Grid.Column="0"
-                                        Width="8"
-                                        Height="8"
-                                        Margin="0,0,8,0"
-                                        VerticalAlignment="Center"
-                                        Fill="{DynamicResource PrimaryHueMidBrush}"
-                                        ToolTip="New transactions since you last viewed this account"
-                                        Visibility="{Binding HasUnseenTransactions, Converter={StaticResource BoolToVis}}" />
-
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        FontSize="22"
-                                        FontWeight="Bold"
-                                        Text="{Binding Name}"
-                                        TextTrimming="CharacterEllipsis" />
-
-                                    <!--
-                                        No explicit Foreground here, deliberately — the ComboBox's own
-                                        surface renders light regardless of the app's dark theme, so a
-                                        theme-resolved brush like MaterialDesignBodyLight (meant for the
-                                        dark Paper background) comes out nearly invisible against it. Instead,
-                                        inherit the same color the Name text above uses (which already
-                                        contrasts correctly against whatever this surface actually is) and
-                                        just dial it back with opacity.
-
-                                        Column is "*" (rather than Auto, like Name) and the text is
-                                        right-aligned within it, so the balance always sits flush against
-                                        the dropdown's right edge regardless of how wide the name is.
-                                    -->
-                                    <TextBlock
-                                        Grid.Column="2"
-                                        Margin="16,0,0,0"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Center"
-                                        Opacity="0.65"
-                                        FontSize="14"
-                                        FontWeight="Normal"
-                                        Text="{Binding BalanceDisplay}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    </Border>
-
-                    <StackPanel
-                        Grid.Column="1"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="Bold"
-                            Text="{Binding SelectedAccountBalanceLine}"
-                            TextAlignment="Right" />
-                        <TextBlock
-                            Margin="0,2,0,0"
-                            FontSize="12"
-                            Foreground="{DynamicResource MaterialDesignBodyLight}"
-                            Text="{Binding SelectedAccountBalanceAsOfLine}"
-                            TextAlignment="Right"
-                            ToolTip="The real balance reported by your bank via Plaid." />
-                    </StackPanel>
-                </Grid>
-
-                <!--
-                    A DockPanel only gives "fill" treatment to its LAST child;
-                    an earlier, un-docked sibling just claims its own desired
-                    width/height regardless of Visibility, which starves
-                    whichever view comes after it. Wrapping both in one Grid
-                    cell makes them properly overlap in the same slot so
-                    toggling Visibility actually swaps which one renders.
-
-                    Visibility is set on a plain wrapper Grid, NOT on the view
-                    itself — setting DataContext and a Visibility binding on
-                    the SAME element means the Visibility binding resolves
-                    against the element's own (just-overridden) DataContext,
-                    not the outer ShellViewModel, so it silently fails and
-                    falls back to the framework default (Visible) forever.
-                -->
-                <Grid>
-                    <Grid Visibility="{Binding IsCheckingSelected, Converter={StaticResource BoolToVis}}">
-                        <views:AccountProjectionView DataContext="{Binding AccountVM}" />
-                    </Grid>
-                    <Grid Visibility="{Binding IsOtherAccountSelected, Converter={StaticResource BoolToVis}}">
-                        <views:AccountTransactionsView DataContext="{Binding OtherAccountVM}" />
-                    </Grid>
-                </Grid>
-            </DockPanel>
-        </DockPanel>
-
-        <!--  Modal Find overlay  -->
+        <!--
+            Shared header for both account types: the account switcher
+            doubles as the page title (no separate "Account Name" label),
+            with the balance block sourced straight from
+            ShellViewModel.SelectedAccount so it works identically whether
+            checking or a read-only account is selected.
+        -->
         <Grid
-            Panel.ZIndex="100"
-            Background="#80000000"
-            FocusManager.FocusedElement="{Binding ElementName=FindTextBox}"
-            PreviewKeyDown="Grid_PreviewKeyDown"
-            Visibility="{Binding IsFindOpen, Converter={StaticResource BoolToVis}}">
-            <!--  60% centered layout  -->
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="2*" />
-                    <RowDefinition Height="6*" />
-                    <RowDefinition Height="2*" />
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="2*" />
-                    <ColumnDefinition Width="6*" />
-                    <ColumnDefinition Width="2*" />
-                </Grid.ColumnDefinitions>
+            Grid.Row="1"
+            Margin="20,16,20,0"
+            ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-                <materialDesign:Card
-                    Grid.Row="1"
-                    Grid.Column="1"
-                    Padding="16"
-                    Background="{DynamicResource MaterialDesignPaper}"
-                    UniformCornerRadius="6">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+            <ComboBox
+                x:Name="AccountCombo"
+                Grid.Column="0"
+                HorizontalAlignment="Left"
+                ItemsSource="{x:Bind ViewModel.Accounts}"
+                SelectedItem="{x:Bind ViewModel.SelectedAccountEntry, Mode=TwoWay}"
+                ToolTipService.ToolTip="Switch between linked accounts">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                        <!--  Search box  -->
-                        <DockPanel Grid.Row="0" LastChildFill="True">
-                            <TextBlock
-                                Margin="0,0,8,0"
+                            <!--  New-transactions badge — cleared the moment this account is selected.  -->
+                            <shapes:Ellipse
+                                Grid.Column="0"
+                                Width="8"
+                                Height="8"
                                 VerticalAlignment="Center"
-                                Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
-                                Text="Find:" />
-                            <TextBox
-                                x:Name="FindTextBox"
-                                Height="40"
-                                MinWidth="320"
-                                Background="{DynamicResource MaterialDesignPaper}"
-                                CaretBrush="{DynamicResource PrimaryHueMidBrush}"
-                                FontSize="18"
-                                Foreground="{DynamicResource MaterialDesignBody}"
-                                SelectionBrush="{DynamicResource SecondaryHueMidBrush}"
-                                SelectionOpacity="0.45"
-                                Text="{Binding FindText, UpdateSourceTrigger=PropertyChanged}"
-                                VerticalContentAlignment="Center"
-                                materialDesign:HintAssist.Hint="Search by name..." />
-                        </DockPanel>
+                                Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                                ToolTipService.ToolTip="New transactions since you last viewed this account"
+                                Visibility="{Binding HasUnseenTransactions, Converter={StaticResource BoolToVis}}" />
 
-                        <!--  Results: ListView with Date + Name + Deposit + Payment  -->
-                        <ListView
-                            Grid.Row="1"
-                            Margin="0,12,0,12"
-                            behaviors:GridViewColumnResize.IsEnabled="True"
-                            ItemsSource="{Binding SearchResults}"
-                            KeyboardNavigation.TabNavigation="Continue"
-                            MouseDoubleClick="ListView_MouseDoubleClick"
-                            ScrollViewer.VerticalScrollBarVisibility="Auto"
-                            SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
-                            Style="{StaticResource MaterialDesignListView}">
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn
-                                        behaviors:GridViewColumnResize.Width="Auto"
-                                        DisplayMemberBinding="{Binding Item.TransactionDate, StringFormat=d}"
-                                        Header="Date" />
-                                    <!--
-                                        Vendor-name/raw-description styling
-                                        here lives in exactly one place:
-                                        DualLineNameTemplate in App.xaml.
-                                    -->
-                                    <GridViewColumn behaviors:GridViewColumnResize.Width="*" Header="Name">
-                                        <GridViewColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ContentControl Content="{Binding Item}" ContentTemplate="{StaticResource DualLineNameTemplate}" />
-                                            </DataTemplate>
-                                        </GridViewColumn.CellTemplate>
-                                    </GridViewColumn>
-                                    <GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Deposit">
-                                        <GridViewColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Item.Deposit, StringFormat={}{0:C}, TargetNullValue=''}" TextAlignment="Right" />
-                                            </DataTemplate>
-                                        </GridViewColumn.CellTemplate>
-                                    </GridViewColumn>
-                                    <GridViewColumn behaviors:GridViewColumnResize.Width="Auto" Header="Payment">
-                                        <GridViewColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Item.Payment, StringFormat={}{0:C}, TargetNullValue=''}" TextAlignment="Right" />
-                                            </DataTemplate>
-                                        </GridViewColumn.CellTemplate>
-                                    </GridViewColumn>
-                                </GridView>
-                            </ListView.View>
-                        </ListView>
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                FontSize="22"
+                                FontWeight="Bold"
+                                Text="{Binding Name}"
+                                TextTrimming="CharacterEllipsis" />
 
-                        <!--  Buttons  -->
-                        <StackPanel
-                            Grid.Row="2"
-                            HorizontalAlignment="Right"
-                            Orientation="Horizontal">
-                            <Button
-                                Margin="0,0,8,0"
-                                Command="{Binding ConfirmFindCommand}"
-                                Content="OK"
-                                Style="{StaticResource MaterialDesignRaisedButton}" />
-                            <Button
-                                Command="{Binding CancelFindCommand}"
-                                Content="Cancel"
-                                Style="{StaticResource MaterialDesignRaisedButton}" />
-                        </StackPanel>
-                    </Grid>
-                </materialDesign:Card>
+                            <TextBlock
+                                Grid.Column="2"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Opacity="0.65"
+                                Text="{Binding BalanceDisplay}" />
+                        </Grid>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                <TextBlock
+                    FontSize="16"
+                    FontWeight="Bold"
+                    Text="{x:Bind ViewModel.SelectedAccountBalanceLine, Mode=OneWay}"
+                    TextAlignment="Right" />
+                <TextBlock
+                    Margin="0,2,0,0"
+                    FontSize="12"
+                    Opacity="0.65"
+                    Text="{x:Bind ViewModel.SelectedAccountBalanceAsOfLine, Mode=OneWay}"
+                    TextAlignment="Right"
+                    ToolTipService.ToolTip="The real balance reported by your bank via Plaid." />
+            </StackPanel>
+        </Grid>
+
+        <!--  Content: swaps between the checking projection grid and a read-only other-account view.  -->
+        <Grid Grid.Row="2">
+            <views:AccountProjectionView
+                x:Name="ProjectionView"
+                Visibility="{x:Bind ViewModel.CheckingVisibility, Mode=OneWay}" />
+            <views:AccountTransactionsView
+                x:Name="OtherAccountView"
+                Visibility="{x:Bind ViewModel.OtherAccountVisibility, Mode=OneWay}" />
+        </Grid>
+
+        <!--  Status bar  -->
+        <Border
+            Grid.Row="3"
+            Padding="12,10"
+            Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    Grid.Column="0"
+                    VerticalAlignment="Center"
+                    FontWeight="Bold"
+                    Text="{x:Bind ViewModel.StatusVM.CurrentMessage, Mode=OneWay}" />
+                <ProgressBar
+                    Grid.Column="1"
+                    Width="120"
+                    Height="4"
+                    Margin="12,0,0,0"
+                    IsIndeterminate="{x:Bind ViewModel.StatusVM.IsBusy, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.StatusVM.BusyVisibility, Mode=OneWay}" />
             </Grid>
-        </Grid>
-
-        <!--  Modal Change History overlay  -->
-        <Grid
-            Panel.ZIndex="100"
-            Background="#80000000"
-            IsVisibleChanged="Overlay_IsVisibleChanged"
-            PreviewKeyDown="Overlay_PreviewKeyDown"
-            Visibility="{Binding IsChangeHistoryOpen, Converter={StaticResource BoolToVis}}">
-            <materialDesign:Card
-                Width="900"
-                Height="560"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="{DynamicResource MaterialDesignPaper}"
-                UniformCornerRadius="6">
-                <views:ChangeHistoryView DataContext="{Binding ChangeHistoryVM}" />
-            </materialDesign:Card>
-        </Grid>
-
-        <!--  Modal Match Review overlay  -->
-        <Grid
-            Panel.ZIndex="100"
-            Background="#80000000"
-            IsVisibleChanged="Overlay_IsVisibleChanged"
-            PreviewKeyDown="Overlay_PreviewKeyDown"
-            Visibility="{Binding IsMatchReviewOpen, Converter={StaticResource BoolToVis}}">
-            <materialDesign:Card
-                Width="820"
-                Height="560"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="{DynamicResource MaterialDesignPaper}"
-                UniformCornerRadius="6">
-                <views:MatchReviewView DataContext="{Binding MatchReviewVM}" />
-            </materialDesign:Card>
-        </Grid>
-
-        <!--  Modal Plaid Environment Settings overlay  -->
-        <Grid
-            Panel.ZIndex="100"
-            Background="#80000000"
-            IsVisibleChanged="Overlay_IsVisibleChanged"
-            PreviewKeyDown="Overlay_PreviewKeyDown"
-            Visibility="{Binding IsPlaidSettingsOpen, Converter={StaticResource BoolToVis}}">
-            <materialDesign:Card
-                Width="520"
-                Height="520"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="{DynamicResource MaterialDesignPaper}"
-                UniformCornerRadius="6">
-                <views:PlaidEnvironmentSettingsView DataContext="{Binding PlaidSettingsVM}" />
-            </materialDesign:Card>
-        </Grid>
-
-        <!--  Modal projection item editor overlay  -->
-        <Grid
-            Panel.ZIndex="100"
-            Background="#80000000"
-            IsVisibleChanged="EditorOverlay_IsVisibleChanged"
-            KeyDown="EditorOverlay_KeyDown"
-            Visibility="{Binding IsEditorOpen, Converter={StaticResource BoolToVis}}">
-            <materialDesign:Card
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="{DynamicResource MaterialDesignPaper}"
-                UniformCornerRadius="6">
-                <views:ProjectionItemEditorView DataContext="{Binding EditorVM}" />
-            </materialDesign:Card>
-        </Grid>
-
-        <!--  Modal Correct Balance overlay  -->
-        <Grid
-            Panel.ZIndex="100"
-            Background="#80000000"
-            IsVisibleChanged="EditorOverlay_IsVisibleChanged"
-            KeyDown="BalanceCorrectionOverlay_KeyDown"
-            Visibility="{Binding IsBalanceCorrectionOpen, Converter={StaticResource BoolToVis}}">
-            <materialDesign:Card
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="{DynamicResource MaterialDesignPaper}"
-                UniformCornerRadius="6">
-                <views:BalanceCorrectionView DataContext="{Binding BalanceCorrectionVM}" />
-            </materialDesign:Card>
-        </Grid>
+        </Border>
     </Grid>
 </Window>

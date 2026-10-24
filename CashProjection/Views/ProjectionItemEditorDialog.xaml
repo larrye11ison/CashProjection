@@ -1,0 +1,47 @@
+<ContentDialog
+    x:Class="CashProjection.Views.ProjectionItemEditorDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="{x:Bind ViewModel.Title}"
+    CloseButtonText="Cancel"
+    CloseButtonClick="ContentDialog_CloseButtonClick"
+    DefaultButton="Primary"
+    PrimaryButtonClick="ContentDialog_PrimaryButtonClick"
+    PrimaryButtonText="Save"
+    SecondaryButtonClick="ContentDialog_SecondaryButtonClick">
+
+    <StackPanel Width="440" Spacing="16">
+        <TextBox Header="Name" Text="{x:Bind ViewModel.Scratch.Name, Mode=TwoWay}" />
+
+        <CalendarDatePicker Header="Date" Date="{x:Bind ViewModel.ScratchDate, Mode=TwoWay}" />
+
+        <Grid ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                Grid.Column="0"
+                Header="Deposit"
+                Text="{x:Bind ViewModel.Scratch.Deposit, Mode=TwoWay, Converter={StaticResource NullableDecimalToString}}" />
+            <TextBox
+                Grid.Column="1"
+                Header="Payment"
+                Text="{x:Bind ViewModel.Scratch.Payment, Mode=TwoWay, Converter={StaticResource NullableDecimalToString}}" />
+        </Grid>
+
+        <ComboBox
+            Header="Periodicity"
+            ItemsSource="{x:Bind ViewModel.PeriodicityOptions}"
+            SelectedItem="{x:Bind ViewModel.Scratch.Periodicity, Mode=TwoWay}" />
+
+        <StackPanel Spacing="4">
+            <TextBox Header="Match pattern (optional)" Text="{x:Bind ViewModel.Scratch.MatchText, Mode=TwoWay}" />
+            <TextBlock
+                FontSize="11"
+                Opacity="0.65"
+                Text="Only used to match this item to a real bank transaction — leave blank to match on the name above."
+                TextWrapping="Wrap" />
+        </StackPanel>
+    </StackPanel>
+</ContentDialog>

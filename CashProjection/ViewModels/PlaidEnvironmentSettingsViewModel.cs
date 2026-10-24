@@ -1,6 +1,6 @@
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CashProjection.Services.Dialogs;
 using CashProjection.Services.Plaid;
 using CashProjection.Services.Secrets;
 
@@ -11,6 +11,7 @@ namespace CashProjection.ViewModels
         private readonly PlaidSettingsService _settings;
         private readonly SecretStoreFactory _secretStores;
         private readonly PlaidLinkService _linkService;
+        private readonly IDialogService _dialogService;
 
         [ObservableProperty]
         private PlaidEnvironmentOption _currentEnvironment;
@@ -24,18 +25,22 @@ namespace CashProjection.ViewModels
         private string _productionSecret = string.Empty;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(HasStoredProductionAccessTokenDisplay))]
         private bool _hasStoredProductionAccessToken;
+
+        public string HasStoredProductionAccessTokenDisplay => $"Production access token stored: {HasStoredProductionAccessToken}";
 
         [ObservableProperty]
         private string _statusMessage = string.Empty;
 
         public event Action? RequestClose;
 
-        public PlaidEnvironmentSettingsViewModel(PlaidSettingsService settings, SecretStoreFactory secretStores, PlaidLinkService linkService)
+        public PlaidEnvironmentSettingsViewModel(PlaidSettingsService settings, SecretStoreFactory secretStores, PlaidLinkService linkService, IDialogService dialogService)
         {
             _settings = settings;
             _secretStores = secretStores;
             _linkService = linkService;
+            _dialogService = dialogService;
 
             CurrentEnvironment = _settings.GetEnvironment();
             HasStoredProductionAccessToken = _linkService.HasStoredAccessToken(PlaidEnvironmentOption.Production);
@@ -66,7 +71,7 @@ namespace CashProjection.ViewModels
         }
 
         [RelayCommand]
-        public void SwitchToProduction()
+        public async Task SwitchToProduction()
         {
             var credStore = _secretStores.GetCredentialStore(PlaidEnvironmentOption.Production);
             var hasClientId = credStore.Get(PlaidClientFactory.ClientIdKey(PlaidEnvironmentOption.Production)) is not null;
@@ -82,8 +87,8 @@ namespace CashProjection.ViewModels
                 : "This will require a REAL bank Link the next time the app starts — a real connection to your actual " +
                   "bank account. Continue?";
 
-            var result = MessageBox.Show(confirmMessage, "Switch to Production", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes)
+            var confirmed = await _dialogService.ConfirmAsync(confirmMessage, "Switch to Production");
+            if (!confirmed)
                 return;
 
             _settings.SetEnvironment(PlaidEnvironmentOption.Production);

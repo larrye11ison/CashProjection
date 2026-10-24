@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CashProjection.Models;
 
 namespace CashProjection.ViewModels
 {
@@ -21,6 +22,23 @@ namespace CashProjection.ViewModels
         public bool IsNew => _target is null;
         public bool IsExisting => _target is not null;
         public string Title => IsNew ? "Add projection item" : "Edit projection item";
+
+        // All enum values for the Periodicity ComboBox — WinUI has no
+        // ObjectDataProvider/x:Type-enum-reflection markup like WPF, so this
+        // is exposed from the ViewModel instead.
+        public Periodicity[] PeriodicityOptions { get; } = Enum.GetValues<Periodicity>();
+
+        // Bridges Scratch.TransactionDate (DateTime, used throughout the
+        // rest of the app) to CalendarDatePicker.Date (DateTimeOffset?).
+        public DateTimeOffset? ScratchDate
+        {
+            get => new DateTimeOffset(DateTime.SpecifyKind(Scratch.TransactionDate, DateTimeKind.Utc));
+            set
+            {
+                if (value.HasValue)
+                    Scratch.TransactionDate = value.Value.UtcDateTime.Date;
+            }
+        }
 
         public ProjectionItemEditorViewModel(AccountProjectionViewModel accountVM, ProjectionItemViewModel? target)
         {
@@ -51,12 +69,12 @@ namespace CashProjection.ViewModels
         // the popover only when the item was really removed, not when
         // they backed out of the confirmation.
         [RelayCommand(CanExecute = nameof(IsExisting))]
-        public void Delete()
+        public async Task Delete()
         {
             if (_target is null)
                 return;
 
-            _accountVM.DeleteTransaction(_target);
+            await _accountVM.DeleteTransaction(_target);
             if (!_accountVM.Transactions.Contains(_target))
                 RequestClose?.Invoke();
         }

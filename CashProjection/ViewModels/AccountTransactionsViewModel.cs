@@ -76,6 +76,12 @@ namespace CashProjection.ViewModels
             public bool Pending { get; }
             public decimal RunningBalance { get; }
 
+            // Pre-formatted for the grid — WinUI's Binding markup has no
+            // StringFormat.
+            public string DateDisplay => Date.ToString("d");
+            public string AmountDisplay => Amount.ToString("C2");
+            public string RunningBalanceDisplay => RunningBalance.ToString("C2");
+
             // BankTransaction.PrimaryDisplayName / HasDistinctVendorName is
             // the one shared rule for this — see there.
             public bool HasDistinctVendorName => _txn.HasDistinctVendorName;

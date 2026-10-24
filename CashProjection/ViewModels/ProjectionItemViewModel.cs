@@ -3,6 +3,26 @@ using CashProjection.Models;
 
 namespace CashProjection.ViewModels
 {
+    // Ordered lowest to highest precedence — see ProjectionItemViewModel.Accent.
+    public enum RowAccent
+    {
+        Normal,
+        Matched,
+        OverdueUnmatched,
+        PendingBankActivity,
+    }
+
+    // Balance-threshold severity — drives a highlight on just the Balance
+    // cell (AccountProjectionView's Balance column), not the whole row. Kept
+    // separate from RowAccent/Accent below: unlike those, this is about one
+    // specific cell being the thing responsible for the warning.
+    public enum BalanceSeverity
+    {
+        Normal,
+        Warning,
+        Danger,
+    }
+
     // ViewModel for a projection item (recurring bill/deposit) in the UI
     public sealed partial class ProjectionItemViewModel : ObservableObject
     {
@@ -10,9 +30,12 @@ namespace CashProjection.ViewModels
         public int AccountId { get; set; }
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(BalanceSeverity))]
+        [NotifyPropertyChangedFor(nameof(BalanceDisplay))]
         private decimal _balance;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(DepositDisplay))]
         private decimal? _deposit;
 
         [ObservableProperty]
@@ -26,12 +49,15 @@ namespace CashProjection.ViewModels
         private string _name = string.Empty;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(PaymentDisplay))]
         private decimal? _payment;
 
         [ObservableProperty]
         private Periodicity _periodicity;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsFutureDated))]
+        [NotifyPropertyChangedFor(nameof(TransactionDateDisplay))]
         private DateTime _transactionDate = DateTime.Today;
 
         [ObservableProperty]
@@ -45,6 +71,7 @@ namespace CashProjection.ViewModels
         // and tint them to show they're linked.
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(IsMatched))]
+        [NotifyPropertyChangedFor(nameof(Accent))]
         private Guid? _matchGroupId;
 
         [ObservableProperty]
@@ -55,6 +82,7 @@ namespace CashProjection.ViewModels
         private bool _hasAmountDrift;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(Accent))]
         private bool _isOverdueUnmatched;
 
         // Unmatched and dated on/before the latest real bank transaction —
@@ -66,6 +94,7 @@ namespace CashProjection.ViewModels
         // the row highlight and sorting these above the real transactions
         // they're expected to be reflected in soon.
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(Accent))]
         private bool _isPendingBankActivity;
 
         // The date used for sort order. Equal to TransactionDate, except for
@@ -75,6 +104,54 @@ namespace CashProjection.ViewModels
         private DateTime _effectiveSortDate = DateTime.Today;
 
         public bool IsMatched => MatchGroupId.HasValue;
+
+        // WinUI styles have no DataTrigger — WPF's WarningRowStyle used a
+        // Style.Triggers list where later triggers override earlier ones
+        // for the same visual property when more than one matches at once.
+        // This collapses that same cascade into one precedence-ordered
+        // value (lowest to highest precedence, matching the original
+        // trigger order) for AccountProjectionView's DataGrid.LoadingRow
+        // handler to turn into an actual row Background/Foreground.
+        public RowAccent Accent
+        {
+            get
+            {
+                if (IsPendingBankActivity)
+                    return RowAccent.PendingBankActivity;
+                if (IsOverdueUnmatched)
+                    return RowAccent.OverdueUnmatched;
+                if (IsMatched)
+                    return RowAccent.Matched;
+                return RowAccent.Normal;
+            }
+        }
+
+        // Fluent 2's "warning colors," applied to just the Balance cell —
+        // see BalanceSeverity's own comment for why this isn't folded into
+        // Accent/RowAccent above.
+        public BalanceSeverity BalanceSeverity
+        {
+            get
+            {
+                if (Balance <= Models.Thresholds.Danger)
+                    return BalanceSeverity.Danger;
+                if (Balance < Models.Thresholds.Warning)
+                    return BalanceSeverity.Warning;
+                return BalanceSeverity.Normal;
+            }
+        }
+
+        // Mirrors the old FutureDateConverter threshold exactly — rows
+        // dated more than a month out render at reduced opacity.
+        public bool IsFutureDated => TransactionDate > DateTime.Today.AddMonths(1);
+
+        // Pre-formatted display strings for the grid's DataGridTextColumns
+        // — WinUI's Binding markup (unlike WPF's) has no StringFormat, so
+        // formatting lives here instead of in XAML.
+        public string TransactionDateDisplay => TransactionDate.ToString("d");
+        public string DepositDisplay => Deposit?.ToString("C2") ?? string.Empty;
+        public string PaymentDisplay => Payment?.ToString("C2") ?? string.Empty;
+        public string BalanceDisplay => Balance.ToString("C2");
 
         public string? MatchTooltip => MatchScore.HasValue
             ? $"Linked to a real transaction (match score {MatchScore})"

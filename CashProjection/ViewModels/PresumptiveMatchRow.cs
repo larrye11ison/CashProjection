@@ -14,5 +14,10 @@ namespace CashProjection.ViewModels
         // out, negative = money in) so the two amounts line up directly
         // comparable in the review UI.
         public decimal ProjectionAmount => ProjectionItem.Payment ?? -(ProjectionItem.Deposit ?? 0m);
+
+        // Pre-formatted for the dialog — WinUI's Binding markup has no StringFormat.
+        public string BankDateDisplay => BankTransaction.TxnDate.ToString("d");
+        public string BankAmountDisplay => BankTransaction.Amount.ToString("C2");
+        public string ScoreDisplay => $"Score: {Match.Score}";
     }
 }

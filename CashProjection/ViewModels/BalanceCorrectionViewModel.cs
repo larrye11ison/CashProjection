@@ -24,9 +24,23 @@ namespace CashProjection.ViewModels
 
         public string TransactionName => _target.PrimaryDisplayName;
         public DateTime TransactionDate => _target.TransactionDate;
+        public string TransactionDateDisplay => _target.TransactionDate.ToString("d");
         public decimal? Deposit => _target.Deposit;
         public decimal? Payment => _target.Payment;
         public decimal CurrentBalance => _target.Balance;
+
+        // Bridges NewBalance (decimal) to the TextBox's string — WinUI's
+        // Binding markup has no StringFormat or implicit decimal<->string
+        // conversion the way WPF's did.
+        public string NewBalanceText
+        {
+            get => NewBalance.ToString("F2");
+            set
+            {
+                if (decimal.TryParse(value, out var d))
+                    NewBalance = d;
+            }
+        }
 
         public BalanceCorrectionViewModel(AccountProjectionViewModel accountVM, ProjectionItemViewModel target)
         {

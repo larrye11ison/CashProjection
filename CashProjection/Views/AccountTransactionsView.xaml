@@ -1,65 +1,49 @@
 <UserControl
     x:Class="CashProjection.Views.AccountTransactionsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <UserControl.Resources>
-        <Style BasedOn="{StaticResource {x:Type DataGridColumnHeader}}" TargetType="DataGridColumnHeader">
-            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
-            <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-        </Style>
-    </UserControl.Resources>
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls">
 
-    <DockPanel Margin="12">
-        <DataGrid
+    <Grid Margin="12">
+        <controls:DataGrid
             AutoGenerateColumns="False"
-            CanUserAddRows="False"
-            CanUserDeleteRows="False"
+            CanUserSortColumns="False"
             GridLinesVisibility="Horizontal"
-            HorizontalGridLinesBrush="{DynamicResource MaterialDesignDivider}"
+            HeadersVisibility="Column"
             IsReadOnly="True"
-            ItemsSource="{Binding Transactions}"
-            RowStyle="{StaticResource MaterialDesignDataGridRow}"
-            Style="{StaticResource MaterialDesignDataGrid}">
-            <DataGrid.Columns>
-                <DataGridTextColumn
+            ItemsSource="{x:Bind ViewModel.Transactions, Mode=OneWay}">
+            <controls:DataGrid.Columns>
+                <controls:DataGridTextColumn
                     Width="110"
-                    Binding="{Binding Date, StringFormat=d}"
-                    Header="Date" />
-                <!--
-                    Vendor-name/raw-description styling for this column
-                    lives in exactly one place: DualLineNameTemplate in
-                    App.xaml.
-                -->
-                <DataGridTemplateColumn
+                    Binding="{Binding DateDisplay}"
+                    Header="Date"
+                    IsReadOnly="True" />
+
+                <!--  Vendor-name/raw-description styling lives in exactly one place: DualLineNameTemplate in App.xaml.  -->
+                <controls:DataGridTemplateColumn
                     Width="*"
                     CellTemplate="{StaticResource DualLineNameTemplate}"
-                    Header="Description" />
-                <DataGridTextColumn
+                    Header="Description"
+                    IsReadOnly="True" />
+
+                <controls:DataGridTextColumn
                     Width="120"
-                    Binding="{Binding Amount, StringFormat={}{0:C2}}"
-                    Header="Amount">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="TextAlignment" Value="Right" />
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
-                <DataGridTextColumn
+                    Binding="{Binding AmountDisplay}"
+                    Header="Amount"
+                    IsReadOnly="True" />
+
+                <controls:DataGridTextColumn
                     Width="140"
-                    Binding="{Binding RunningBalance, StringFormat={}{0:C2}, TargetNullValue=''}"
-                    Header="Balance">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="TextAlignment" Value="Right" />
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
-                <DataGridCheckBoxColumn
+                    Binding="{Binding RunningBalanceDisplay}"
+                    Header="Balance"
+                    IsReadOnly="True" />
+
+                <controls:DataGridCheckBoxColumn
                     Width="70"
-                    Binding="{Binding Pending, Mode=OneWay}"
-                    Header="Pending" />
-            </DataGrid.Columns>
-        </DataGrid>
-    </DockPanel>
+                    Binding="{Binding Pending}"
+                    Header="Pending"
+                    IsReadOnly="True" />
+            </controls:DataGrid.Columns>
+        </controls:DataGrid>
+    </Grid>
 </UserControl>

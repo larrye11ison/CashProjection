@@ -1,9 +1,9 @@
 # Cash Projection
 
-A modern WPF desktop application for managing and projecting cash flow over time. Track your recurring transactions, visualize your account balance, and identify potential cash flow issues before they happen.
+A modern WinUI 3 desktop application for managing and projecting cash flow over time. Track your recurring transactions, visualize your account balance, and identify potential cash flow issues before they happen.
 
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)
-![WPF](https://img.shields.io/badge/WPF-Windows-0078D4?logo=windows)
+![WinUI 3](https://img.shields.io/badge/WinUI_3-Windows_App_SDK-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Features
@@ -15,19 +15,25 @@ A modern WPF desktop application for managing and projecting cash flow over time
 - Visual warning indicators for low and critically low projected balances
 
 ### ?? Smart Visualization
-- Color-coded transaction rows (warnings for low balance, errors for negative balance)
+- Row highlighting for two specific warnings: an unmatched projection overdue past its date, and "pending" bank activity (already reflected in your live balance but not yet posted as a transaction)
+- A dedicated Flags column: a calendar icon marks projection items (vs. real bank transactions), plus icons for the lowest near-term balance, a matched/linked transaction, and an amount-drift warning
+- The Balance column highlights just the one cell — not the whole row — when that row's balance crosses a caution/critical threshold, so it's unambiguous which number is driving the warning
+- The "lowest balance" check only ever looks at projection items (never real bank transactions — a low point that already happened is water under the bridge) and only as far as 30 days ahead. It deliberately has no lower bound: an overdue, unmatched projection is never treated as "in the past" here, since it's already pinned to sort and balance-walk as upcoming regardless of how stale its date is — only the forward 30-day horizon is capped
 - Future transactions displayed with reduced opacity
-- Low balance indicator highlighting the lowest balance within �1 month of today
 - Running balance calculation across all transactions
 
 ### ? Productivity Features
 - **Keyboard Shortcuts**:
   - `Ctrl+F` - Find transactions
   - `F2` - Edit the selected projection item
+  - `Ctrl+Z` / `Ctrl+Y` - Undo / Redo
+  - `Ctrl+H` - View change history
+  - `Ctrl+M` - Review presumptive matches
 - **Quick Actions**:
   - Edit: open the selected projection item in a popover editor — Save writes it to the database immediately (also Delete from there)
   - Push Forward: Move recurring transactions by their periodicity
   - Add new transactions via the same popover editor
+  - Correct Balance: manually override a real transaction's reported/estimated balance
 - **Smart Search**: Find transactions by name with instant results and keyboard navigation, newest first
 
 ### ?? Data Management
@@ -37,9 +43,10 @@ A modern WPF desktop application for managing and projecting cash flow over time
 ## Tech Stack
 
 - **Framework**: .NET 10.0 (Windows)
-- **UI Framework**: WPF (Windows Presentation Foundation)
+- **UI Framework**: WinUI 3 (Windows App SDK), unpackaged
 - **MVVM**: CommunityToolkit.Mvvm 8.4.0
-- **Design**: Material Design In XAML Toolkit 5.3.0
+- **Design**: Standard Fluent styling (Mica backdrop, light/dark follows the OS setting) — no third-party theming
+- **Grid control**: CommunityToolkit.WinUI.UI.Controls.DataGrid (WinUI ships no built-in DataGrid)
 - **Architecture**: MVVM pattern with proper separation of concerns
 
 ## Getting Started
@@ -58,14 +65,14 @@ A modern WPF desktop application for managing and projecting cash flow over time
    cd CashProjection
    ```
 
-2. Build the solution:
+2. Build the solution (WinUI 3/Windows App SDK apps need an explicit runtime identifier — there's no AnyCPU):
    ```bash
-   dotnet build
+   dotnet build CashProjection/CashProjection.csproj -r win-x64
    ```
 
 3. Run the application:
    ```bash
-   dotnet run --project CashProjection
+   dotnet run --project CashProjection -r win-x64
    ```
 
 ### First Launch
@@ -118,9 +125,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- [Material Design In XAML Toolkit](http://materialdesigninxaml.net/) for styling
 - [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) for modern MVVM patterns
-- The .NET and WPF communities for excellent documentation and support
+- [CommunityToolkit.WinUI](https://github.com/CommunityToolkit/WindowsCommunityToolkit) for the DataGrid control
+- The .NET and WinUI communities for excellent documentation and support
 
 ## Contact
 

@@ -1,24 +1,26 @@
 using System.Collections.ObjectModel;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CashProjection.Models;
 using CashProjection.Services;
+using CashProjection.Services.Dialogs;
 
 namespace CashProjection.ViewModels
 {
     public sealed partial class ChangeHistoryViewModel : ObservableObject
     {
         private readonly ChangeHistoryService _historyService;
+        private readonly IDialogService _dialogService;
         private readonly Action _onDataChanged;
 
         public event Action? RequestClose;
 
         public ObservableCollection<ChangeHistoryEntry> Entries { get; } = new();
 
-        public ChangeHistoryViewModel(ChangeHistoryService historyService, Action onDataChanged)
+        public ChangeHistoryViewModel(ChangeHistoryService historyService, IDialogService dialogService, Action onDataChanged)
         {
             _historyService = historyService;
+            _dialogService = dialogService;
             _onDataChanged = onDataChanged;
             Reload();
         }
@@ -42,17 +44,15 @@ namespace CashProjection.ViewModels
         }
 
         [RelayCommand]
-        public void RollbackToHere(ChangeHistoryEntry? entry)
+        public async Task RollbackToHere(ChangeHistoryEntry? entry)
         {
             if (entry is null)
                 return;
 
-            var result = MessageBox.Show(
+            var confirmed = await _dialogService.ConfirmAsync(
                 $"This will undo every change made after {entry.TimestampUtc.ToLocalTime():g}. Continue?",
-                "Roll back",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes)
+                "Roll back");
+            if (!confirmed)
                 return;
 
             _historyService.RollbackTo(entry.TimestampUtc);

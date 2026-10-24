@@ -2,19 +2,19 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Data;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.WinUI.UI.Controls;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using CashProjection.Models;
 using CashProjection.Data.Repositories;
 using CashProjection.Services;
+using CashProjection.Services.Dialogs;
 
 namespace CashProjection.ViewModels
 {
@@ -29,7 +29,9 @@ namespace CashProjection.ViewModels
         private readonly MatchRepository _matchRepo;
         private readonly AppSettingsRepository _settingsRepo;
         private readonly ChangeHistoryService _changeHistory;
+        private readonly IDialogService _dialogService;
         private readonly Account _account;
+        private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
         private readonly Stack<int> _redoStack = new();
 
@@ -55,6 +57,7 @@ namespace CashProjection.ViewModels
             MatchRepository matchRepo,
             AppSettingsRepository settingsRepo,
             ChangeHistoryService changeHistory,
+            IDialogService dialogService,
             StatusBarViewModel? statusVM = null)
         {
             _statusVM = statusVM;
@@ -64,6 +67,7 @@ namespace CashProjection.ViewModels
             _matchRepo = matchRepo;
             _settingsRepo = settingsRepo;
             _changeHistory = changeHistory;
+            _dialogService = dialogService;
 
             _account = _accountRepo.GetOrCreateActiveAccount();
 
@@ -86,7 +90,6 @@ namespace CashProjection.ViewModels
                 t.PropertyChanged += Transaction_PropertyChanged;
             _transactions.CollectionChanged += Transactions_CollectionChanged;
 
-            ApplySort();
             ResortAndRecalculate();
         }
 
@@ -278,7 +281,7 @@ namespace CashProjection.ViewModels
         }
 
         [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
-        public void DeleteTransaction(ProjectionItemViewModel? transaction)
+        public async Task DeleteTransaction(ProjectionItemViewModel? transaction)
         {
             if (transaction == null)
                 return;
@@ -289,14 +292,11 @@ namespace CashProjection.ViewModels
                     ? $"payment of {transaction.Payment:C}"
                     : "amount of $0";
 
-            var result = MessageBox.Show(
+            var confirmed = await _dialogService.ConfirmAsync(
                 $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
-                "Confirm Delete",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question
-            );
+                "Confirm Delete");
 
-            if (result == MessageBoxResult.Yes)
+            if (confirmed)
             {
                 var before = transaction.ToModel();
                 _itemRepo.Delete(transaction.Id);
@@ -305,7 +305,7 @@ namespace CashProjection.ViewModels
 
                 _transactions.Remove(transaction);
 
-                // Don't rely on the DataGrid's own SelectedItem-on-removal
+                // Don't rely on the grid's own SelectedItem-on-removal
                 // fixup running before the editor popover's RequestClose
                 // handler reads SelectedTransaction right after this —
                 // clear it explicitly so that handler's "fall back to
@@ -341,7 +341,11 @@ namespace CashProjection.ViewModels
         }
 
         // Selects and scrolls to a row — used by Find to jump to a result,
-        // and after adding a new item, so it's immediately visible.
+        // and after adding a new item, so it's immediately visible. The
+        // grid is FullRow-selection and read-only (no in-cell editing), so
+        // giving the row/grid itself keyboard focus is enough for arrow-key
+        // navigation to resume from here — unlike WPF's DataGrid, there's no
+        // need to drill down to an individual DataGridCell.
         public void FocusTransaction(ProjectionItemViewModel item)
         {
             if (item is null)
@@ -349,76 +353,24 @@ namespace CashProjection.ViewModels
 
             SelectedTransaction = item;
 
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(() =>
-                {
-                    if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
-                        return;
-
-                    if (fe.FindName("TransactionsGrid") is not DataGrid dg)
-                        return;
-
-                    dg.SelectedItem = item;
-                    var column = dg.Columns.FirstOrDefault();
-                    if (column is null)
-                        return;
-
-                    dg.ScrollIntoView(item, column);
-
-                    // ScrollIntoView only schedules the layout pass that
-                    // would realize this row — the grid virtualizes rows,
-                    // so without forcing that layout to actually happen
-                    // right now, the row's container usually doesn't exist
-                    // yet and there'd be nothing to focus below.
-                    dg.UpdateLayout();
-
-                    // CurrentCell, not SelectedItem, is what arrow-key
-                    // navigation actually moves from — without this, Up/
-                    // Down would resume from wherever the grid's current
-                    // cell last was, not from this row.
-                    dg.CurrentCell = new DataGridCellInfo(item, column);
-
-                    if (dg.ItemContainerGenerator.ContainerFromItem(item) is not DataGridRow row)
-                        return;
-
-                    // Arrow-key navigation needs an actual DataGridCell to
-                    // hold real *keyboard* focus (Keyboard.FocusedElement) —
-                    // distinct from "focus" in the WPF sense (FocusManager's
-                    // logical, per-scope notion). Focusing the row or the
-                    // grid itself only ever grabs the latter, which looks
-                    // right (the row highlights) but doesn't actually give
-                    // the grid's own Up/Down key handling anything to act
-                    // on until the user clicks a cell directly.
-                    row.ApplyTemplate();
-                    if (FindVisualChild<DataGridCellsPresenter>(row) is { } presenter
-                        && presenter.ItemContainerGenerator.ContainerFromIndex(dg.Columns.IndexOf(column)) is DataGridCell cell)
-                    {
-                        cell.Focus();
-                        Keyboard.Focus(cell);
-                    }
-                    else
-                    {
-                        row.Focus();
-                        Keyboard.Focus(row);
-                    }
-                })
-            );
-        }
-
-        private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
-        {
-            var count = VisualTreeHelper.GetChildrenCount(parent);
-            for (var i = 0; i < count; i++)
+            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
             {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                if (child is T t)
-                    return t;
-                var result = FindVisualChild<T>(child);
-                if (result != null)
-                    return result;
-            }
-            return null;
+                if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
+                    return;
+
+                if (fe.FindName("TransactionsGrid") is not DataGrid dg)
+                    return;
+
+                dg.SelectedItem = item;
+                dg.ScrollIntoView(item, null);
+
+                // ScrollIntoView only schedules the layout pass that would
+                // realize this row — the grid virtualizes rows, so without
+                // forcing that layout to actually happen right now, the
+                // row's container usually doesn't exist yet to focus below.
+                dg.UpdateLayout();
+                dg.Focus(FocusState.Programmatic);
+            });
         }
 
         [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
@@ -511,7 +463,6 @@ namespace CashProjection.ViewModels
                 t.PropertyChanged += Transaction_PropertyChanged;
             _transactions.CollectionChanged += Transactions_CollectionChanged;
 
-            ApplySort();
             ResortAndRecalculate();
 
             var restored = previousSelection is null
@@ -535,17 +486,29 @@ namespace CashProjection.ViewModels
             a.IsReadOnly == b.IsReadOnly
             && (a.IsReadOnly ? a.BankTransactionId == b.BankTransactionId : a.Id == b.Id);
 
-        // Whether keyboard focus currently belongs to the grid or one of
-        // its cells — used to decide whether a disruptive refresh/resort
+        // Whether keyboard focus currently belongs to the grid or something
+        // inside it — used to decide whether a disruptive refresh/resort
         // should pull focus back in afterward, or just quietly restore the
         // selection without yanking focus away from wherever the user
-        // actually is (e.g. mid-edit in the item editor popover).
+        // actually is (e.g. mid-edit in the item editor popover). WinUI has
+        // no FrameworkElement.IsKeyboardFocusWithin — walk up from whatever
+        // currently holds focus instead.
         private bool IsGridKeyboardFocusWithin()
         {
-            if (_viewRef is null || !_viewRef.TryGetTarget(out var fe))
+            if (_viewRef is null || !_viewRef.TryGetTarget(out var fe) || fe.XamlRoot is null)
                 return false;
 
-            return fe.FindName("TransactionsGrid") is DataGrid { IsKeyboardFocusWithin: true };
+            if (fe.FindName("TransactionsGrid") is not DataGrid dg)
+                return false;
+
+            var current = FocusManager.GetFocusedElement(fe.XamlRoot) as DependencyObject;
+            while (current is not null)
+            {
+                if (ReferenceEquals(current, dg))
+                    return true;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return false;
         }
 
         // Re-reads the account row from the database and refreshes display
@@ -574,63 +537,19 @@ namespace CashProjection.ViewModels
             IsSearchOpen = !IsSearchOpen;
         }
 
-        private void ApplySort()
-        {
-            var view = CollectionViewSource.GetDefaultView(Transactions);
-
-            if (view is IEditableCollectionView editable && (editable.IsEditingItem || editable.IsAddingNew))
-            {
-                Application.Current?.Dispatcher.BeginInvoke(
-                    DispatcherPriority.Background,
-                    new System.Action(ApplySort)
-                );
-                return;
-            }
-
-            view.SortDescriptions.Clear();
-
-            if (view is ListCollectionView listView)
-            {
-                listView.CustomSort = s_comparer;
-            }
-            else
-            {
-                view.SortDescriptions.Add(
-                    new SortDescription(
-                        nameof(ProjectionItemViewModel.TransactionDate),
-                        ListSortDirection.Descending
-                    )
-                );
-            }
-
-            if (view is ICollectionViewLiveShaping live && live.CanChangeLiveSorting)
-            {
-                live.IsLiveSorting = true;
-                live.LiveSortingProperties?.Clear();
-                live.LiveSortingProperties?.Add(nameof(ProjectionItemViewModel.TransactionDate));
-                live.LiveSortingProperties?.Add(nameof(ProjectionItemViewModel.EffectiveSortDate));
-                live.LiveSortingProperties?.Add(nameof(ProjectionItemViewModel.MatchGroupId));
-                live.LiveSortingProperties?.Add(nameof(ProjectionItemViewModel.Payment));
-                live.LiveSortingProperties?.Add(nameof(ProjectionItemViewModel.Deposit));
-            }
-        }
-
         private void FocusSearch()
         {
-            Application.Current?.Dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new System.Action(() =>
+            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (_viewRef != null && _viewRef.TryGetTarget(out var fe))
                 {
-                    if (_viewRef != null && _viewRef.TryGetTarget(out var fe))
+                    if (fe.FindName("SearchTextBox") is TextBox tb)
                     {
-                        if (fe.FindName("SearchTextBox") is TextBox tb)
-                        {
-                            tb.Focus();
-                            tb.SelectAll();
-                        }
+                        tb.Focus(FocusState.Programmatic);
+                        tb.SelectAll();
                     }
-                })
-            );
+                }
+            });
         }
 
         partial void OnIsSearchOpenChanged(bool value)
@@ -659,16 +578,14 @@ namespace CashProjection.ViewModels
             if (_isRecalculating)
                 return;
 
-            // This forces a resort on every call (see the comment on the
-            // ApplySort() call at the bottom of the try block) — which can
-            // tear down and rebuild the grid's row/cell visual containers
-            // even when nothing about the actual order changed, losing
-            // whichever cell held real keyboard focus. Restore it
-            // afterward, same object reference (a resort doesn't replace
-            // any row's object, just reorders them), but only if the grid
-            // actually had focus beforehand — never steal focus into the
-            // grid on behalf of a background recalculation the user didn't
-            // ask for.
+            // The final reorder below can move rows around even when
+            // nothing about the actual order changed, which can tear down
+            // and rebuild the grid's row containers and lose whichever row
+            // held real keyboard focus. Restore it afterward, same object
+            // reference (a reorder doesn't replace any row's object, just
+            // repositions them), but only if the grid actually had focus
+            // beforehand — never steal focus into the grid on behalf of a
+            // background recalculation the user didn't ask for.
             var previousSelection = SelectedTransaction;
             var hadKeyboardFocus = IsGridKeyboardFocusWithin();
 
@@ -817,14 +734,23 @@ namespace CashProjection.ViewModels
                 var ordered = _transactions.OrderBy(t => t, s_comparer).ToList();
 
                 var now = DateTime.Now.Date;
-                var start = now.AddMonths(-1);
-                var end = now.AddMonths(1);
+                var end = now.AddDays(30);
 
                 // Only projection items can be the "lowest" point — this is
                 // a warning about projected activity, not a historical fact
-                // about what the real balance already did.
+                // about what the real balance already did. Deliberately NO
+                // lower bound on TransactionDate: an overdue unmatched
+                // projection is never "in the past" as far as this app is
+                // concerned — it's pinned to sort and balance-walk as
+                // upcoming (EffectiveSortDate, above) regardless of how
+                // stale its raw date is, so excluding it here just because
+                // its date fell behind "now" would be inconsistent with
+                // that. The only real bound is how far forward to bother
+                // looking — there's no value in flagging a projected low
+                // point months from now when nothing between here and
+                // there is settled yet.
                 var candidates = ordered
-                    .Where(t => !t.IsReadOnly && t.TransactionDate.Date >= start && t.TransactionDate.Date <= end)
+                    .Where(t => !t.IsReadOnly && t.TransactionDate.Date <= end)
                     .ToList();
                 ProjectionItemViewModel? lowest = null;
                 if (candidates.Count > 0)
@@ -845,14 +771,16 @@ namespace CashProjection.ViewModels
                 foreach (var t in _transactions.Where(t => !t.IsReadOnly))
                     t.IsOverdueUnmatched = !t.MatchGroupId.HasValue && t.TransactionDate.Date < overdueCutoff;
 
-                // ApplySort's view.CustomSort (set because TransactionComparer
-                // needs more than a single property to order rows) means the
-                // grid's own IsLiveSorting never actually re-positions a row
-                // when its TransactionDate changes — WPF's live-shaping only
-                // auto-resorts views sorted via SortDescriptions. Re-apply the
-                // sort explicitly so the grid reorders immediately instead of
-                // only catching up on the next full reload.
-                ApplySort();
+                // WinUI has no live-shaping CollectionView to lean on for
+                // auto-resorting, so the collection itself is kept in
+                // sorted order directly: move each row into the position
+                // `ordered` (computed above, via the same comparer) says it
+                // belongs in. ObservableCollection.Move fires a Move
+                // CollectionChanged notification, which re-enters
+                // Transactions_CollectionChanged -> ResortAndRecalculate()
+                // — safely a no-op thanks to the _isRecalculating guard at
+                // the top of this method.
+                ReorderTransactionsToMatch(ordered);
             }
             finally
             {
@@ -861,6 +789,22 @@ namespace CashProjection.ViewModels
 
             if (hadKeyboardFocus && previousSelection is not null && _transactions.Contains(previousSelection))
                 FocusTransaction(previousSelection);
+        }
+
+        // Minimal-moves in-place reorder: walk the target order left to
+        // right, and move whatever's currently in that position into place
+        // if it's not already there. Quadratic in the worst case (IndexOf
+        // per row), but the row counts here are small enough (hundreds, not
+        // millions) that this is never a practical concern.
+        private void ReorderTransactionsToMatch(List<ProjectionItemViewModel> ordered)
+        {
+            for (var targetIndex = 0; targetIndex < ordered.Count; targetIndex++)
+            {
+                var item = ordered[targetIndex];
+                var currentIndex = _transactions.IndexOf(item);
+                if (currentIndex != targetIndex)
+                    _transactions.Move(currentIndex, targetIndex);
+            }
         }
 
         private void Transaction_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -978,8 +922,8 @@ namespace CashProjection.ViewModels
 
         private bool CanDeleteOrPushForward(ProjectionItemViewModel? transaction)
         {
-            // Return false during binding resolution to prevent MS.Internal.NamedObject issues.
-            // Real bank-transaction rows are read-only — nothing to push forward or delete.
+            // Real bank-transaction rows are read-only — nothing to push
+            // forward or delete.
             return transaction is not null && !transaction.IsReadOnly;
         }
     }

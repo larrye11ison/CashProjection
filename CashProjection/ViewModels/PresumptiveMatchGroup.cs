@@ -14,6 +14,10 @@ namespace CashProjection.ViewModels
 
         public decimal ProjectionAmount => ProjectionItem.Payment ?? -(ProjectionItem.Deposit ?? 0m);
 
+        // Pre-formatted for the dialog — WinUI's Binding markup has no StringFormat.
+        public string ProjectionAmountDisplay => ProjectionAmount.ToString("C2");
+        public string ProjectionDateDisplay => ProjectionItem.TransactionDate.ToString("d");
+
         // Same rule as BankTransaction's vendor-name/raw-description pair —
         // only show the match pattern alongside the item's name when it's
         // actually set and differs from it; otherwise it's redundant.

@@ -37,5 +37,8 @@ namespace CashProjection.Models
 
         // Display-only convenience for the History view — never persisted.
         public DateTime LocalTimestamp => TimestampUtc.ToLocalTime();
+
+        // Pre-formatted for the grid — WinUI's Binding markup has no StringFormat.
+        public string LocalTimestampDisplay => LocalTimestamp.ToString("g");
     }
 }

@@ -1,11 +1,9 @@
-using System.Windows;
-using System.Windows.Threading;
-using MaterialDesignThemes.Wpf;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Win32;
+using Microsoft.UI.Xaml;
 using CashProjection.Data;
 using CashProjection.Data.Repositories;
 using CashProjection.Services;
+using CashProjection.Services.Dialogs;
 using CashProjection.Services.Matching;
 using CashProjection.Services.Plaid;
 using CashProjection.Services.Secrets;
@@ -17,22 +15,20 @@ namespace CashProjection
     public partial class App : Application
     {
         private ServiceProvider? _serviceProvider;
+        private Window? _window;
 
-        protected override async void OnStartup(StartupEventArgs e)
+        public App()
         {
-            base.OnStartup(e);
+            InitializeComponent();
 
             // Without this, any unhandled exception on the UI thread kills
             // the whole process with no trace — log it and let the user
             // decide whether to keep going, rather than crashing silently.
-            DispatcherUnhandledException += OnDispatcherUnhandledException;
+            UnhandledException += OnUnhandledException;
+        }
 
-            ApplyOSTheme();
-
-            // Avoid an implicit shutdown if the mandatory Plaid Link window
-            // (shown before ShellView) is the only open window and gets closed.
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
-
+        protected override async void OnLaunched(LaunchActivatedEventArgs args)
+        {
             var services = new ServiceCollection();
             ConfigureServices(services);
             _serviceProvider = services.BuildServiceProvider();
@@ -45,21 +41,24 @@ namespace CashProjection
             {
                 var linkVm = _serviceProvider.GetRequiredService<PlaidLinkViewModel>();
                 var linkWindow = new PlaidLinkWindow(linkVm);
-                linkWindow.ShowDialog();
+                await linkWindow.ShowAndWaitAsync();
 
                 if (!linkVm.Succeeded)
                 {
-                    // Connecting a bank account is mandatory for this app — there's
-                    // nothing useful to show without it.
-                    Shutdown();
+                    // Connecting a bank account is mandatory for this app —
+                    // there's nothing useful to show without it. Unlike WPF,
+                    // WinUI doesn't exit the process just because a window
+                    // closed, so this has to be explicit.
+                    Exit();
                     return;
                 }
             }
 
             var shellViewModel = _serviceProvider.GetRequiredService<ShellViewModel>();
             var shellView = _serviceProvider.GetRequiredService<ShellView>();
-            MainWindow = shellView;
-            shellView.Show();
+            _window = shellView;
+            shellView.Closed += (_, _) => Exit();
+            shellView.Activate();
 
             if (settings.GetNeedsReconnect())
             {
@@ -69,15 +68,12 @@ namespace CashProjection
                     StatusSeverity.Error);
             }
 
-            // Back to normal behavior now that the real main window is up.
-            ShutdownMode = ShutdownMode.OnLastWindowClose;
-
             // Kicks off the first sync immediately; ShellViewModel's own
             // timer takes over from here for periodic re-syncs.
             _ = shellViewModel.RunBackgroundSyncAsync();
         }
 
-        private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+        private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
             try
             {
@@ -86,13 +82,6 @@ namespace CashProjection
                     e.Exception.ToString());
             }
             catch { /* best-effort diagnostic only */ }
-
-            MessageBox.Show(
-                $"An unexpected error occurred:\n\n{e.Exception.Message}\n\nDetails were written to " +
-                $"{System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cp_crash.txt")}",
-                "Cash Projection — Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
 
             e.Handled = true;
         }
@@ -115,39 +104,13 @@ namespace CashProjection
             services.AddSingleton<UnseenTransactionsTracker>();
             services.AddSingleton<FuzzyMatchingService>();
             services.AddSingleton<ChangeHistoryService>();
+            services.AddSingleton<IDialogService, DialogService>();
 
             services.AddSingleton<StatusBarViewModel>();
             services.AddSingleton<AccountProjectionViewModel>();
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<ShellView>();
             services.AddTransient<PlaidLinkViewModel>();
-        }
-
-        private static void ApplyOSTheme()
-        {
-            bool isSystemDarkMode = IsSystemDarkMode();
-
-            var paletteHelper = new PaletteHelper();
-            var theme = paletteHelper.GetTheme();
-
-            theme.SetBaseTheme(isSystemDarkMode ? BaseTheme.Dark : BaseTheme.Light);
-            paletteHelper.SetTheme(theme);
-        }
-
-        private static bool IsSystemDarkMode()
-        {
-            try
-            {
-                using var key = Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-                );
-                var value = key?.GetValue("AppsUseLightTheme");
-                return value is int i && i == 0;
-            }
-            catch
-            {
-                return false;
-            }
         }
     }
 }
