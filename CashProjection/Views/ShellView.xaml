@@ -62,6 +62,12 @@
                         IsEnabled="{Binding IsCheckingSelected}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         ToolTip="Push the selected item forward by its periodicity" />
+                    <Button
+                        Command="{Binding CorrectBalanceSelectedCommand}"
+                        Content="Correct Balance"
+                        IsEnabled="{Binding IsCheckingSelected}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        ToolTip="Manually override the selected real transaction's balance — only when Plaid's reported/estimated balance is wrong" />
                     <Separator />
                     <Button
                         Command="{Binding OpenFindCommand}"
@@ -472,6 +478,22 @@
                 Background="{DynamicResource MaterialDesignPaper}"
                 UniformCornerRadius="6">
                 <views:ProjectionItemEditorView DataContext="{Binding EditorVM}" />
+            </materialDesign:Card>
+        </Grid>
+
+        <!--  Modal Correct Balance overlay  -->
+        <Grid
+            Panel.ZIndex="100"
+            Background="#80000000"
+            IsVisibleChanged="EditorOverlay_IsVisibleChanged"
+            KeyDown="BalanceCorrectionOverlay_KeyDown"
+            Visibility="{Binding IsBalanceCorrectionOpen, Converter={StaticResource BoolToVis}}">
+            <materialDesign:Card
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{DynamicResource MaterialDesignPaper}"
+                UniformCornerRadius="6">
+                <views:BalanceCorrectionView DataContext="{Binding BalanceCorrectionVM}" />
             </materialDesign:Card>
         </Grid>
     </Grid>

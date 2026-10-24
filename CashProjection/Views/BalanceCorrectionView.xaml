@@ -1,0 +1,90 @@
+<UserControl
+    x:Class="CashProjection.Views.BalanceCorrectionView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Width="440">
+    <StackPanel Margin="20">
+        <DockPanel Margin="0,0,0,12" LastChildFill="True">
+            <Button
+                Command="{Binding CancelCommand}"
+                DockPanel.Dock="Right"
+                Style="{StaticResource MaterialDesignIconButton}"
+                ToolTip="Close">
+                <materialDesign:PackIcon Kind="Close" />
+            </Button>
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="18"
+                FontWeight="Bold"
+                Text="Correct Balance" />
+        </DockPanel>
+
+        <!--
+            Prominent, impossible-to-miss warning — this overrides what
+            Plaid reported/estimated, is treated as a verified fact going
+            forward, and ripples backward through every earlier real
+            transaction's displayed balance (ResortAndRecalculate's
+            checkpoint-aware walk). Not undoable via Ctrl+Z.
+        -->
+        <Border
+            Margin="0,0,0,16"
+            Padding="12"
+            Background="{DynamicResource MaterialDesignErrorBrush}"
+            CornerRadius="4">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon
+                    Width="22"
+                    Height="22"
+                    Margin="0,0,10,0"
+                    VerticalAlignment="Top"
+                    Foreground="{DynamicResource MaterialDesignOnErrorBrush}"
+                    Kind="AlertCircleOutline" />
+                <TextBlock
+                    Foreground="{DynamicResource MaterialDesignOnErrorBrush}"
+                    FontWeight="Bold"
+                    Text="This overrides your bank's reported balance and is treated as a verified fact — every earlier transaction's displayed balance will be recalculated from it. This cannot be undone with Ctrl+Z. Only do this if you've confirmed the correct balance yourself (e.g. your bank's own website)."
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!--  Read-only context so it's clear which transaction this is.  -->
+        <StackPanel Margin="0,0,0,16">
+            <TextBlock
+                FontWeight="Bold"
+                Text="{Binding TransactionName}"
+                TextTrimming="CharacterEllipsis" />
+            <TextBlock
+                Margin="0,2,0,0"
+                Opacity="0.65"
+                FontSize="12"
+                Text="{Binding TransactionDate, StringFormat=d}" />
+        </StackPanel>
+
+        <TextBox
+            Margin="0,0,0,4"
+            materialDesign:HintAssist.Hint="Correct balance"
+            Style="{StaticResource MaterialDesignOutlinedTextBox}"
+            Text="{Binding NewBalance, UpdateSourceTrigger=PropertyChanged, StringFormat=F2}" />
+        <TextBlock
+            Margin="4,0,0,20"
+            FontSize="11"
+            Opacity="0.65"
+            Text="The account balance immediately after this transaction."
+            TextWrapping="Wrap" />
+
+        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+            <Button
+                Margin="0,0,8,0"
+                Command="{Binding CancelCommand}"
+                Content="Cancel"
+                Style="{StaticResource MaterialDesignOutlinedButton}" />
+            <Button
+                Command="{Binding SaveCommand}"
+                Content="Save Correction"
+                Background="{DynamicResource MaterialDesignErrorBrush}"
+                Foreground="{DynamicResource MaterialDesignOnErrorBrush}"
+                Style="{StaticResource MaterialDesignRaisedButton}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

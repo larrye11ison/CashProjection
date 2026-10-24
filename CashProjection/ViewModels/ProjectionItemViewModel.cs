@@ -89,6 +89,17 @@ namespace CashProjection.ViewModels
         public bool IsEditable => !IsReadOnly;
         public int? BankTransactionId { get; private init; }
 
+        // True only for the single synthetic "pending/unexplained bank
+        // activity" placeholder row (see CreatePendingGapPlaceholder below)
+        // — never persisted to BankTransactions, purely a display-time
+        // reconciliation of a gap between the live-fetched account balance
+        // and what the known, synced real transactions account for.
+        // Excluded from anything that assumes a genuine Plaid transaction
+        // exists: Find (ShellViewModel.UpdateSearchResults), and the
+        // "latest real transaction date" used to pin overdue projections
+        // above real activity (AccountProjectionViewModel.ResortAndRecalculate).
+        public bool IsSyntheticPendingGap { get; private init; }
+
         // Bank-row-only (null for editable projection items): Plaid's
         // cleaned-up merchant name, kept separate from Name (which holds
         // the bank's own raw description text for a bank row). Set once at
@@ -124,9 +135,11 @@ namespace CashProjection.ViewModels
         // authoritative fact that ResortAndRecalculate must never overwrite.
         public bool HasKnownBalance { get; private init; }
 
-        public string BalanceSourceDescription => IsReadOnly
-            ? (HasKnownBalance ? "Reported by your bank" : "Estimated — your bank didn't report a balance for this transaction")
-            : "Projected estimate";
+        public string BalanceSourceDescription => IsSyntheticPendingGap
+            ? "Pending — already reflected in your bank's live balance, but not yet posted as a transaction"
+            : IsReadOnly
+                ? (HasKnownBalance ? "Reported by your bank" : "Estimated — your bank didn't report a balance for this transaction")
+                : "Projected estimate";
 
         // Default constructor for new projection items
         public ProjectionItemViewModel()
@@ -171,6 +184,51 @@ namespace CashProjection.ViewModels
             vm.Name = txn.Description;
             if (txn.RunningBalance.HasValue)
                 vm.Balance = txn.RunningBalance.Value;
+            return vm;
+        }
+
+        // Synthesizes the single placeholder row representing the gap
+        // between the live account balance (Account.StartingBalance,
+        // refreshed every sync) and what the known, synced real
+        // transactions account for — detected live, every
+        // ResortAndRecalculate pass, as the discrepancy between today's
+        // balance and the most recent trusted checkpoint (Plaid-reported
+        // or manually corrected) found walking backward. Can arise either
+        // from ordinary Plaid sync latency (the live balance moves before
+        // the transaction that caused it has synced in) or from a manual
+        // correction that no longer reconciles with the live balance.
+        // Never persisted to BankTransactions; recreated/updated fresh
+        // every pass (see AccountProjectionViewModel.SyncPendingGapPlaceholder).
+        // Returns null when there's nothing to show.
+        public static ProjectionItemViewModel? CreatePendingGapPlaceholder(Account account, decimal amount)
+        {
+            if (Math.Abs(amount) < 0.01m)
+                return null;
+
+            var vm = new ProjectionItemViewModel
+            {
+                IsReadOnly = true,
+                IsSyntheticPendingGap = true,
+                // Deliberately true — not because Plaid reported a
+                // per-transaction balance (this isn't a real transaction at
+                // all), but to exempt this row from
+                // ResortAndRecalculate's backward-estimate walk, which must
+                // never try to "explain" it the way it does genuine
+                // unknown-balance real rows. Balance (set below, and kept
+                // current by SyncPendingGapPlaceholder) is the ONLY thing
+                // ever allowed to assign this row's Balance, since the
+                // normal walk is structurally exempted from touching it.
+                HasKnownBalance = true,
+                TransactionDate = DateTime.Now,
+                EffectiveSortDate = DateTime.Now,
+                Periodicity = Periodicity.NotApplicable,
+                Name = "Pending transaction(s)",
+            };
+            if (amount > 0)
+                vm.Deposit = amount;
+            else
+                vm.Payment = -amount;
+            vm.Balance = account.StartingBalance;
             return vm;
         }
 

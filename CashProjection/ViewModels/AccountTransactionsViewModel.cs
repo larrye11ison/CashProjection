@@ -56,7 +56,16 @@ namespace CashProjection.ViewModels
             {
                 _txn = txn;
                 Date = txn.TxnDate;
-                Amount = txn.Amount;
+                // Flipped from Plaid's own convention (positive = money
+                // out, negative = money in) to the intuitive one used
+                // everywhere else in the app (the checking grid's
+                // Deposit/Payment columns are both always shown positive,
+                // so this is the one place a raw signed Amount is ever
+                // displayed directly) — incoming positive, outgoing
+                // negative. Only affects this display value; the running-
+                // balance walk in Refresh() still reads txn.Amount
+                // directly in Plaid's own convention, unaffected.
+                Amount = -txn.Amount;
                 Pending = txn.Pending;
                 RunningBalance = runningBalance;
             }

@@ -22,6 +22,17 @@
                 <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
                     <Setter Property="Background" Value="{DynamicResource MaterialDesignDivider}" />
                 </DataTrigger>
+                <!--
+                    The synthetic "pending bank activity" placeholder row —
+                    informational/explanatory rather than a warning, so a
+                    light touch: italic text on the existing muted
+                    read-only background rather than a new warning color.
+                    Still overridden by the low-balance warning/danger
+                    triggers below if the account is also running low.
+                -->
+                <DataTrigger Binding="{Binding IsSyntheticPendingGap}" Value="True">
+                    <Setter Property="FontStyle" Value="Italic" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsMatched}" Value="True">
                     <Setter Property="Background" Value="{DynamicResource SecondaryHueLightBrush}" />
                 </DataTrigger>
@@ -156,10 +167,18 @@
                                     <materialDesign:PackIcon
                                         Width="16"
                                         Height="16"
+                                        Margin="0,0,4,0"
                                         Foreground="{DynamicResource MaterialDesignWarningBrush}"
                                         Kind="AlertCircleOutline"
                                         ToolTip="The matched real amount differs from the projected estimate by more than the configured threshold."
                                         Visibility="{Binding HasAmountDrift, Converter={StaticResource BoolToVis}}" />
+                                    <materialDesign:PackIcon
+                                        Width="16"
+                                        Height="16"
+                                        Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                        Kind="ClockOutline"
+                                        ToolTip="Already reflected in your bank's live balance, but not yet posted as a transaction — Plaid's balance and transaction feeds can lag each other."
+                                        Visibility="{Binding IsSyntheticPendingGap, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>

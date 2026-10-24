@@ -68,12 +68,23 @@ namespace CashProjection.ViewModels
             _account = _accountRepo.GetOrCreateActiveAccount();
 
             _transactions = [];
-            _transactions.CollectionChanged += Transactions_CollectionChanged;
 
+            // Deliberately NOT subscribed yet — LoadAllRows() populates via
+            // several Clear()/Add() calls, each of which would otherwise
+            // synchronously re-enter Transactions_CollectionChanged ->
+            // ResortAndRecalculate() while still inside ObservableCollection's
+            // own CollectionChanged dispatch for the PRIOR mutation, which
+            // throws ("Cannot change ObservableCollection during a
+            // CollectionChanged event") the moment ResortAndRecalculate
+            // itself needs to add/remove the pending-gap placeholder row.
+            // Subscribing only after the initial bulk population has fully
+            // returned avoids that entirely — the same pattern
+            // ReloadTransactionsFromDatabase already uses.
             LoadAllRows();
 
             foreach (var t in _transactions)
                 t.PropertyChanged += Transaction_PropertyChanged;
+            _transactions.CollectionChanged += Transactions_CollectionChanged;
 
             ApplySort();
             ResortAndRecalculate();
@@ -93,6 +104,53 @@ namespace CashProjection.ViewModels
 
             _transactions.AddRange(items);
             _transactions.AddRange(bankRows);
+        }
+
+        // Inserts, updates in place, or removes the single synthetic
+        // "pending/unexplained bank activity" placeholder row to match
+        // gapAmount — the discrepancy ResortAndRecalculate's checkpoint-
+        // aware backward walk just computed between today's live balance
+        // and the most recent trusted checkpoint (Plaid-reported or
+        // manually corrected) it found, if any. Called from inside that
+        // same walk, every pass, so this reacts live to anything that
+        // could introduce or resolve such a gap — ordinary Plaid sync
+        // latency, or a manual correction that no longer reconciles with
+        // the live balance. Mutating the existing instance's
+        // [ObservableProperty]s in place (rather than replacing it) feeds
+        // the existing PropertyChanged -> Transaction_PropertyChanged ->
+        // ResortAndRecalculate() pipeline the same as any other edit —
+        // safely a no-op re-entrant call, since _isRecalculating is still
+        // true for the remainder of the pass that's already in progress.
+        private void SyncPendingGapPlaceholder(decimal gapAmount)
+        {
+            var existing = _transactions.FirstOrDefault(t => t.IsSyntheticPendingGap);
+
+            if (Math.Abs(gapAmount) < 0.01m)
+            {
+                if (existing is not null)
+                    _transactions.Remove(existing);
+                return;
+            }
+
+            if (existing is null)
+            {
+                var placeholder = ProjectionItemViewModel.CreatePendingGapPlaceholder(_account, gapAmount);
+                if (placeholder is not null)
+                    _transactions.Add(placeholder);
+                return;
+            }
+
+            existing.TransactionDate = DateTime.Now;
+            existing.EffectiveSortDate = DateTime.Now;
+            // Balance is the one field ResortAndRecalculate's backward-
+            // estimate walk will never set for this row (HasKnownBalance=
+            // true exempts it) — this assignment is the only thing keeping
+            // it current.
+            existing.Balance = _account.StartingBalance;
+            if (gapAmount > 0)
+                existing.Deposit = gapAmount;
+            else
+                existing.Payment = -gapAmount;
         }
 
         // A confirmed match "crosses off" the real BankTransaction
@@ -379,6 +437,32 @@ namespace CashProjection.ViewModels
             _redoStack.Clear();
         }
 
+        // Manually overrides a real bank transaction's running balance (the
+        // "Correct Balance" popover) — e.g. when Plaid's live balance and
+        // its transaction feed have drifted apart and you've confirmed the
+        // true post-transaction balance some other way (your bank's own
+        // website, a statement, etc.). Writes directly to BankTransactions
+        // via the one column UpdateRunningBalance touches, then does a full
+        // reload so ResortAndRecalculate's checkpoint-aware backward walk
+        // picks this row up as a trusted anchor and recomputes every
+        // earlier real transaction's balance from it.
+        //
+        // Deliberately NOT recorded in change history — there's no
+        // BankTransaction case in ChangeEntityType, and this follows the
+        // same precedent as the other direct BankTransaction/Account
+        // mutations in this app (Plaid sync's own balance/transaction
+        // writes), none of which go through change history either. Not
+        // undoable via Ctrl+Z; the popover warns about this before saving.
+        public void CorrectBalance(ProjectionItemViewModel transaction, decimal newBalance)
+        {
+            if (transaction.BankTransactionId is not { } bankTransactionId)
+                return;
+
+            _bankRepo.UpdateRunningBalance(bankTransactionId, newBalance);
+            ReloadTransactionsFromDatabase();
+            _statusVM?.Report($"Corrected balance for '{transaction.Name}' to {newBalance:C2}.", busy: false, StatusSeverity.Info);
+        }
+
         [RelayCommand]
         public void Undo()
         {
@@ -557,15 +641,16 @@ namespace CashProjection.ViewModels
 
         // Real bank transactions and projected items get their Balance
         // computed in two separate passes:
-        //   - Real rows WITH a known balance (Plaid's own running_balance,
-        //     reported by the bank) just show that value, untouched — it's
-        //     a fact, not an estimate.
-        //   - Real rows WITHOUT one (not every institution/transaction gets
-        //     running_balance) fall back to an estimate: walked backward
-        //     from the current real balance (Account.StartingBalance)
-        //     through real transactions only, grouped by calendar date since
-        //     Plaid gives no reliable time-of-day to order same-day rows
-        //     honestly. Never influenced by projected items.
+        //   - Real rows are walked backward through calendar-date groups
+        //     (grouped since Plaid gives no reliable time-of-day to order
+        //     same-day rows honestly), starting from today's live balance.
+        //     Any date-group containing a known balance — Plaid's own
+        //     running_balance, or a manual correction via the Correct
+        //     Balance popover (BankTransactionRepository.UpdateRunningBalance)
+        //     — is a trusted checkpoint: it resets the running anchor for
+        //     every earlier group, instead of every real row being
+        //     estimated purely from today's balance regardless of how far
+        //     back it is. Never influenced by projected items.
         //   - Projected rows: a forward-looking estimate, starting from the
         //     same current balance and advanced only through other
         //     projected items in date order.
@@ -590,15 +675,60 @@ namespace CashProjection.ViewModels
             _isRecalculating = true;
             try
             {
-                var realByDateDescending = _transactions
-                    .Where(t => t.IsReadOnly && !t.HasKnownBalance)
+                // Segmented by "checkpoint" dates — any date-group
+                // containing a known-balance row (Plaid-reported, or
+                // manually set via the Correct Balance popover) is trusted
+                // as-is and RESETS the running anchor for every earlier
+                // group, rather than every real row being estimated purely
+                // from today's live balance regardless of how far back it
+                // is. This is what makes a manual correction on an old
+                // transaction actually ripple backward through everything
+                // older than it — not just change that one row.
+                var realGroupsByDateDescending = _transactions
+                    .Where(t => t.IsReadOnly && !t.IsSyntheticPendingGap)
                     .GroupBy(t => t.TransactionDate.Date)
                     .OrderByDescending(g => g.Key)
                     .ToList();
 
+                // Detected live, every pass, as a side effect of this same
+                // walk — the discrepancy between "what today's live balance
+                // implies this date-group's balance should be, walking
+                // backward through only the real transactions actually
+                // known in between" and what the FIRST checkpoint we reach
+                // (Plaid-reported or manually corrected) actually says.
+                // Null until that first checkpoint is hit; stays at
+                // whatever it was set to after that, since only the
+                // most-recent checkpoint's reconciliation against "today"
+                // is meaningful here — older checkpoints further back just
+                // continue resetting the anchor for their own earlier
+                // groups, same as before. This is what makes a manual
+                // correction (or ordinary Plaid sync latency) that no
+                // longer reconciles with the live balance get explained by
+                // a "Pending transaction(s)" placeholder instead of
+                // silently vanishing into an unrelated row's balance.
+                decimal? pendingGapAmount = null;
+
                 var runningReal = _account.StartingBalance;
-                foreach (var dateGroup in realByDateDescending)
+                foreach (var dateGroup in realGroupsByDateDescending)
                 {
+                    var checkpoint = dateGroup.FirstOrDefault(t => t.HasKnownBalance);
+                    if (checkpoint is not null)
+                    {
+                        if (pendingGapAmount is null)
+                            pendingGapAmount = runningReal - checkpoint.Balance;
+
+                        // Trusted fact — becomes the anchor for every
+                        // date-group older than it. Still (re-)applied to
+                        // every row in this date-group, not just the
+                        // checkpoint row itself: Plaid gives no reliable
+                        // time-of-day, so same-day rows always share one
+                        // end-of-date balance, same as the estimated case
+                        // below — otherwise an unknown-balance sibling of a
+                        // same-day checkpoint would never get a Balance
+                        // assigned at all.
+                        runningReal = checkpoint.Balance;
+                    }
+
                     foreach (var t in dateGroup)
                         t.Balance = runningReal; // balance as of end of this date
 
@@ -607,6 +737,13 @@ namespace CashProjection.ViewModels
                     var netEffect = dateGroup.Sum(t => (t.Deposit ?? 0m) - (t.Payment ?? 0m));
                     runningReal -= netEffect;
                 }
+
+                // Adds, updates in place, or removes the synthetic
+                // placeholder based on what the walk above just found — a
+                // null pendingGapAmount (no checkpoint anywhere in the
+                // known history) means there's nothing to compare the live
+                // balance against, so no placeholder either.
+                SyncPendingGapPlaceholder(pendingGapAmount ?? 0m);
 
                 // Keep EffectiveSortDate in sync with the item's own date
                 // for every unmatched row — PushForward/edits mutate
@@ -631,8 +768,14 @@ namespace CashProjection.ViewModels
                 // warning highlight: these are the ones worth double-
                 // checking — did the bill actually get paid, or was it
                 // forgotten?
+                // Excludes the synthetic pending-gap placeholder — it's
+                // dated "now" by construction, and counting it here would
+                // make every cycle with an open gap treat "now" as the
+                // latest real activity date, over-triggering this warning
+                // on projections that aren't actually overdue relative to
+                // genuine bank activity.
                 var latestRealDate = _transactions
-                    .Where(t => t.IsReadOnly)
+                    .Where(t => t.IsReadOnly && !t.IsSyntheticPendingGap)
                     .Select(t => t.TransactionDate.Date)
                     .DefaultIfEmpty(DateTime.MinValue)
                     .Max();
@@ -780,6 +923,25 @@ namespace CashProjection.ViewModels
                     return -1;
                 if (b is null)
                     return 1;
+
+                // The synthetic pending-gap placeholder is guaranteed to
+                // sort directly between every projection item (above it)
+                // and every real bank transaction (below it), regardless
+                // of its own EffectiveSortDate ("now") — date comparisons
+                // alone can't guarantee this: an overdue pinned projection,
+                // or an ordinary projection due today, can date-compare on
+                // either side of "now" depending on exactly when "now" is.
+                // Only short-circuits when ONE side is the placeholder, so
+                // this can never disturb the matched-pair adjacency logic
+                // below for two ordinary rows (a matched projection item
+                // deliberately shares its paired real transaction's date
+                // and sorts next to it, wherever that falls chronologically).
+                if (a.IsSyntheticPendingGap != b.IsSyntheticPendingGap)
+                {
+                    if (a.IsSyntheticPendingGap)
+                        return b.IsReadOnly ? -1 : 1;
+                    return a.IsReadOnly ? 1 : -1;
+                }
 
                 // Date descending — most recent/soonest first. A matched
                 // projection item borrows its real transaction's date here

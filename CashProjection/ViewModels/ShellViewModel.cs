@@ -70,6 +70,12 @@ namespace CashProjection.ViewModels
         private ProjectionItemEditorViewModel? _editorVM;
 
         [ObservableProperty]
+        private bool _isBalanceCorrectionOpen;
+
+        [ObservableProperty]
+        private BalanceCorrectionViewModel? _balanceCorrectionVM;
+
+        [ObservableProperty]
         private string _findText = string.Empty;
 
         [ObservableProperty]
@@ -136,6 +142,7 @@ namespace CashProjection.ViewModels
                 {
                     EditSelectedCommand.NotifyCanExecuteChanged();
                     PushForwardSelectedCommand.NotifyCanExecuteChanged();
+                    CorrectBalanceSelectedCommand.NotifyCanExecuteChanged();
                 }
             };
         }
@@ -314,6 +321,32 @@ namespace CashProjection.ViewModels
 
         private bool CanActOnSelection() => AccountVM?.SelectedTransaction is { IsEditable: true };
 
+        [RelayCommand(CanExecute = nameof(CanCorrectBalanceOnSelection))]
+        public void CorrectBalanceSelected()
+        {
+            if (AccountVM.SelectedTransaction is not { } target)
+                return;
+
+            var vm = new BalanceCorrectionViewModel(AccountVM, target);
+            vm.RequestClose += () =>
+            {
+                IsBalanceCorrectionOpen = false;
+                BalanceCorrectionVM = null;
+                AccountVM.FocusGridAfterPopoverClosed();
+            };
+            BalanceCorrectionVM = vm;
+            IsBalanceCorrectionOpen = true;
+        }
+
+        // Only a genuine real bank transaction has a balance worth
+        // correcting — not an editable projection item (its Balance is
+        // always a forward projection, never a fact to begin with), and
+        // not the synthetic pending-gap placeholder (it's not a real
+        // transaction at all; its own value is kept current automatically
+        // by AccountProjectionViewModel.SyncPendingGapPlaceholder).
+        private bool CanCorrectBalanceOnSelection() =>
+            AccountVM?.SelectedTransaction is { IsReadOnly: true, IsSyntheticPendingGap: false };
+
         // Closes whichever single-instance overlay is currently open — the
         // one deterministic Escape-dismiss path shared by every popover
         // except Find (which has its own key handling for Up/Down/Enter
@@ -323,6 +356,8 @@ namespace CashProjection.ViewModels
         {
             if (IsEditorOpen)
                 EditorVM?.CancelCommand.Execute(null);
+            else if (IsBalanceCorrectionOpen)
+                BalanceCorrectionVM?.CancelCommand.Execute(null);
             else if (IsMatchReviewOpen)
                 MatchReviewVM?.CloseCommand.Execute(null);
             else if (IsChangeHistoryOpen)
@@ -581,7 +616,8 @@ namespace CashProjection.ViewModels
                 return;
 
             var results = AccountVM
-                .Transactions.Select(vm =>
+                .Transactions.Where(vm => !vm.IsSyntheticPendingGap)
+                .Select(vm =>
                 {
                     var lower = (vm.Name ?? string.Empty).ToLowerInvariant();
                     var hits = tokens.Count(tok => lower.Contains(tok));

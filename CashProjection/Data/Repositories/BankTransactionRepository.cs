@@ -42,6 +42,18 @@ namespace CashProjection.Data.Repositories
             return reader.Read() ? Read(reader) : null;
         }
 
+        public BankTransaction? GetByPlaidTransactionId(string plaidTransactionId)
+        {
+            using var cmd = _db.Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId, VendorName
+                FROM BankTransactions WHERE PlaidTransactionId = $plaidTransactionId;
+                """;
+            cmd.Parameters.AddWithValue("$plaidTransactionId", plaidTransactionId);
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? Read(reader) : null;
+        }
+
         public void Upsert(BankTransaction txn)
         {
             using var cmd = _db.Connection.CreateCommand();
@@ -73,6 +85,22 @@ namespace CashProjection.Data.Repositories
                 txn.RunningBalance.HasValue ? txn.RunningBalance.Value.ToString(CultureInfo.InvariantCulture) : (object)DBNull.Value);
             cmd.Parameters.AddWithValue("$plaidAccountId", (object?)txn.PlaidAccountId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$vendorName", (object?)txn.VendorName ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
+
+        // Narrow update used by the "Correct Balance" popover — a
+        // deliberate manual override of a specific transaction's
+        // bank-reported (or previously estimated) running balance. Touches
+        // only this one column; everything else about the row (amount,
+        // description, etc.) stays exactly as Plaid reported it.
+        public void UpdateRunningBalance(int id, decimal? runningBalance)
+        {
+            using var cmd = _db.Connection.CreateCommand();
+            cmd.CommandText = "UPDATE BankTransactions SET RunningBalance = $runningBalance WHERE Id = $id;";
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.Parameters.AddWithValue(
+                "$runningBalance",
+                runningBalance.HasValue ? runningBalance.Value.ToString(CultureInfo.InvariantCulture) : (object)DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 

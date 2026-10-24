@@ -85,6 +85,28 @@ namespace CashProjection.Views
             }
         }
 
+        // Mirrors EditorOverlay_KeyDown above, for the simpler Correct
+        // Balance popover — it has no nested popup controls of its own
+        // (just one TextBox), so there's no bubbling-vs-tunneling
+        // precedence to worry about, but it still needs its own handler
+        // since it targets BalanceCorrectionVM specifically.
+        private void BalanceCorrectionOverlay_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (DataContext is not ShellViewModel { BalanceCorrectionVM: { } vm })
+                return;
+
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                vm.SaveCommand.Execute(null);
+            }
+            else if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                vm.CancelCommand.Execute(null);
+            }
+        }
+
         // The overlay Grids and the main DataGrid are SIBLINGS in the
         // visual tree, not ancestor/descendant — routed key events (the
         // PreviewKeyDown/KeyDown handlers above) only ever travel along
