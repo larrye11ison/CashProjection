@@ -25,10 +25,11 @@ namespace CashProjection.Services
             _matchRepo = matchRepo;
         }
 
-        public void Record(ChangeEntityType entityType, int entityId, ChangeType changeType, object? before, object? after, string description, string? batchId = null)
+        public void Record(int accountId, ChangeEntityType entityType, int entityId, ChangeType changeType, object? before, object? after, string description, string? batchId = null)
         {
             _historyRepo.Insert(new ChangeHistoryEntry
             {
+                AccountId = accountId,
                 EntityType = entityType,
                 EntityId = entityId,
                 ChangeType = changeType,
@@ -46,7 +47,7 @@ namespace CashProjection.Services
         // call for that action — they'll always be undone/redone together.
         public string NewBatchId() => Guid.NewGuid().ToString("N");
 
-        public List<ChangeHistoryEntry> GetAllNewestFirst() => _historyRepo.GetAllNewestFirst();
+        public List<ChangeHistoryEntry> GetAllNewestFirst(int accountId) => _historyRepo.GetAllNewestFirst(accountId);
 
         public void Undo(int entryId)
         {
@@ -89,9 +90,9 @@ namespace CashProjection.Services
         // If the cutoff falls in the middle of a batch, the whole batch is
         // still reversed together — otherwise a match's Confirmed status and
         // its reschedule could end up split across the boundary.
-        public void RollbackTo(DateTime timestampUtc)
+        public void RollbackTo(DateTime timestampUtc, int accountId)
         {
-            var entries = _historyRepo.GetNewerThan(timestampUtc);
+            var entries = _historyRepo.GetNewerThan(timestampUtc, accountId);
 
             var expanded = new List<ChangeHistoryEntry>(entries);
             var seenIds = entries.Select(e => e.Id).ToHashSet();

@@ -15,7 +15,7 @@ namespace CashProjection.Data.Repositories
             using (var cmd = _db.Connection.CreateCommand())
             {
                 cmd.CommandText = """
-                    SELECT Id, Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf, SupportsProjections
+                    SELECT Id, Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf
                     FROM Accounts
                     WHERE IsActive = 1
                     LIMIT 1;
@@ -25,22 +25,47 @@ namespace CashProjection.Data.Repositories
                     return Read(reader);
             }
 
-            var account = new Account { Name = "My Account", IsActive = true, SupportsProjections = true, StartingBalance = 0m };
+            var account = new Account { Name = "My Account", IsActive = true, StartingBalance = 0m };
             Insert(account);
             return account;
         }
 
-        // Every account linked under the Plaid Item, checking first — used
-        // by the account switcher. Checking (SupportsProjections = true)
-        // sorts first so it's always the default selection.
+        public Account? GetById(int id)
+        {
+            using var cmd = _db.Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf
+                FROM Accounts WHERE Id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", id);
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? Read(reader) : null;
+        }
+
+        // Used by PlaidSyncService's account-discovery pass to tell whether
+        // a Plaid-reported account already has a local row.
+        public Account? GetByPlaidAccountId(string plaidAccountId)
+        {
+            using var cmd = _db.Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf
+                FROM Accounts WHERE PlaidAccountId = $pid LIMIT 1;
+                """;
+            cmd.Parameters.AddWithValue("$pid", plaidAccountId);
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? Read(reader) : null;
+        }
+
+        // Every account linked under the Plaid Item — used by the account
+        // switcher. The default-selected (IsActive) account sorts first.
         public List<Account> GetAll()
         {
             var results = new List<Account>();
             using var cmd = _db.Connection.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf, SupportsProjections
+                SELECT Id, Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf
                 FROM Accounts
-                ORDER BY SupportsProjections DESC, Name ASC;
+                ORDER BY IsActive DESC, Name ASC;
                 """;
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -52,8 +77,8 @@ namespace CashProjection.Data.Repositories
         {
             using var cmd = _db.Connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO Accounts (Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf, SupportsProjections)
-                VALUES ($name, $isActive, $plaidItemId, $plaidAccountId, $startingBalance, $startingBalanceAsOf, $supportsProjections);
+                INSERT INTO Accounts (Name, IsActive, PlaidItemId, PlaidAccountId, StartingBalance, StartingBalanceAsOf)
+                VALUES ($name, $isActive, $plaidItemId, $plaidAccountId, $startingBalance, $startingBalanceAsOf);
                 SELECT last_insert_rowid();
                 """;
             BindCommon(cmd, account);
@@ -70,8 +95,7 @@ namespace CashProjection.Data.Repositories
                     PlaidItemId = $plaidItemId,
                     PlaidAccountId = $plaidAccountId,
                     StartingBalance = $startingBalance,
-                    StartingBalanceAsOf = $startingBalanceAsOf,
-                    SupportsProjections = $supportsProjections
+                    StartingBalanceAsOf = $startingBalanceAsOf
                 WHERE Id = $id;
                 """;
             cmd.Parameters.AddWithValue("$id", account.Id);
@@ -89,7 +113,6 @@ namespace CashProjection.Data.Repositories
             cmd.Parameters.AddWithValue(
                 "$startingBalanceAsOf",
                 account.StartingBalanceAsOf.HasValue ? account.StartingBalanceAsOf.Value.ToString("O") : (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("$supportsProjections", account.SupportsProjections ? 1 : 0);
         }
 
         private static Account Read(SqliteDataReader reader) => new Account
@@ -103,7 +126,6 @@ namespace CashProjection.Data.Repositories
             StartingBalanceAsOf = reader.IsDBNull(6)
                 ? null
                 : DateTime.Parse(reader.GetString(6), null, DateTimeStyles.RoundtripKind),
-            SupportsProjections = reader.GetInt32(7) != 0,
         };
     }
 }

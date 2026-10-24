@@ -21,16 +21,17 @@
             IsOpen="False">
             <AppBarButton
                 Command="{x:Bind ViewModel.AddNewCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Add New"
                 ToolTipService.ToolTip="Add a new projection item">
+                <!--  Same Calendar glyph as the Flags column's projection-item marker — there's no CalendarAdd in this font, and AppBarButton.Icon can't layer two icons.  -->
                 <AppBarButton.Icon>
-                    <SymbolIcon Symbol="Add" />
+                    <FontIcon Glyph="&#xE787;" />
                 </AppBarButton.Icon>
             </AppBarButton>
             <AppBarButton
                 Command="{x:Bind ViewModel.EditSelectedCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Edit"
                 ToolTipService.ToolTip="Edit the selected item (F2)">
                 <AppBarButton.Icon>
@@ -42,7 +43,7 @@
             </AppBarButton>
             <AppBarButton
                 Command="{x:Bind ViewModel.PushForwardSelectedCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Push Forward"
                 ToolTipService.ToolTip="Push the selected item forward by its periodicity">
                 <AppBarButton.Icon>
@@ -51,7 +52,7 @@
             </AppBarButton>
             <AppBarButton
                 Command="{x:Bind ViewModel.CorrectBalanceSelectedCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Correct Balance"
                 ToolTipService.ToolTip="Manually override the selected real transaction's balance — only when Plaid's reported/estimated balance is wrong">
                 <AppBarButton.Icon>
@@ -61,7 +62,7 @@
             <AppBarSeparator />
             <AppBarButton
                 Command="{x:Bind ViewModel.OpenFindCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Find"
                 ToolTipService.ToolTip="Find transactions (Ctrl+F)">
                 <AppBarButton.Icon>
@@ -74,7 +75,7 @@
             <AppBarSeparator />
             <AppBarButton
                 Command="{x:Bind ViewModel.UndoCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Undo"
                 ToolTipService.ToolTip="Undo the most recent change (Ctrl+Z)">
                 <AppBarButton.Icon>
@@ -86,7 +87,7 @@
             </AppBarButton>
             <AppBarButton
                 Command="{x:Bind ViewModel.RedoCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Redo"
                 ToolTipService.ToolTip="Redo the last undone change (Ctrl+Y)">
                 <AppBarButton.Icon>
@@ -98,7 +99,7 @@
             </AppBarButton>
             <AppBarButton
                 Command="{x:Bind ViewModel.OpenHistoryCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="History"
                 ToolTipService.ToolTip="View change history (Ctrl+H)">
                 <AppBarButton.Icon>
@@ -110,7 +111,7 @@
             </AppBarButton>
             <AppBarButton
                 Command="{x:Bind ViewModel.OpenMatchesCommand}"
-                IsEnabled="{x:Bind ViewModel.IsCheckingSelected, Mode=OneWay}"
+                IsEnabled="{x:Bind ViewModel.HasSelectedAccount, Mode=OneWay}"
                 Label="Matches"
                 ToolTipService.ToolTip="Review presumptive matches between projections and real bank transactions (Ctrl+M)">
                 <AppBarButton.Icon>
@@ -140,11 +141,10 @@
         </CommandBar>
 
         <!--
-            Shared header for both account types: the account switcher
-            doubles as the page title (no separate "Account Name" label),
-            with the balance block sourced straight from
-            ShellViewModel.SelectedAccount so it works identically whether
-            checking or a read-only account is selected.
+            The account switcher doubles as the page title (no separate
+            "Account Name" label), with the balance block sourced straight
+            from ShellViewModel.SelectedAccount rather than AccountVM, since
+            a sync only updates the latter in place.
         -->
         <Grid
             Grid.Row="1"
@@ -216,14 +216,9 @@
             </StackPanel>
         </Grid>
 
-        <!--  Content: swaps between the checking projection grid and a read-only other-account view.  -->
+        <!--  Content: every account gets the same projection/matching-capable view.  -->
         <Grid Grid.Row="2">
-            <views:AccountProjectionView
-                x:Name="ProjectionView"
-                Visibility="{x:Bind ViewModel.CheckingVisibility, Mode=OneWay}" />
-            <views:AccountTransactionsView
-                x:Name="OtherAccountView"
-                Visibility="{x:Bind ViewModel.OtherAccountVisibility, Mode=OneWay}" />
+            <views:AccountProjectionView x:Name="ProjectionView" />
         </Grid>
 
         <!--  Status bar  -->

@@ -22,6 +22,13 @@ namespace CashProjection.Models
     public sealed class ChangeHistoryEntry
     {
         public int Id { get; set; }
+
+        // Which account this change belongs to — needed now that any
+        // account can have projection items/matches, so Undo/Redo/History/
+        // RollbackTo can be scoped to whichever account is currently
+        // selected instead of acting across all of them at once.
+        public int AccountId { get; set; }
+
         public ChangeEntityType EntityType { get; set; }
         public int EntityId { get; set; }
         public ChangeType ChangeType { get; set; }
