@@ -7,6 +7,7 @@
     <RootNamespace>CashProjection</RootNamespace>
     <AssemblyName>CashProjection</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -28,6 +29,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Data\Migrations\*.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
