@@ -162,7 +162,7 @@ namespace CashProjection.Services.Matching
                 match.DecidedAtUtc = DateTime.UtcNow;
                 _matchRepo.Update(match);
                 _changeHistory.Record(
-                    ChangeEntityType.Match, match.Id, ChangeType.MatchRejected,
+                    accountId, ChangeEntityType.Match, match.Id, ChangeType.MatchRejected,
                     before, match,
                     $"Automatically expired — {reason}");
                 expiredCount++;

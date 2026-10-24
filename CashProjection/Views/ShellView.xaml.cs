@@ -21,9 +21,9 @@ namespace CashProjection.Views
 
             Title = "Cash Projection";
             WindowBackdropHelper.ApplyMica(this);
+            WindowIconHelper.SetIcon(this, "Assets\\AppIcon.ico");
 
             ProjectionView.ViewModel = ViewModel.AccountVM;
-            OtherAccountView.ViewModel = ViewModel.OtherAccountVM;
 
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
             RootGrid.SizeChanged += (_, e) =>
@@ -50,8 +50,8 @@ namespace CashProjection.Views
         {
             switch (e.PropertyName)
             {
-                case nameof(ShellViewModel.OtherAccountVM):
-                    OtherAccountView.ViewModel = ViewModel.OtherAccountVM;
+                case nameof(ShellViewModel.AccountVM):
+                    ProjectionView.ViewModel = ViewModel.AccountVM;
                     break;
 
                 case nameof(ShellViewModel.IsFindOpen) when ViewModel.IsFindOpen:

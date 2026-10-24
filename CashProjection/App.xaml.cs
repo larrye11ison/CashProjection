@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using CashProjection.Data;
 using CashProjection.Data.Repositories;
+using CashProjection.Models;
 using CashProjection.Services;
 using CashProjection.Services.Dialogs;
 using CashProjection.Services.Matching;
@@ -107,7 +108,15 @@ namespace CashProjection
             services.AddSingleton<IDialogService, DialogService>();
 
             services.AddSingleton<StatusBarViewModel>();
-            services.AddSingleton<AccountProjectionViewModel>();
+
+            // AccountProjectionViewModel is now per-account (any account
+            // can have projections, not just one DI-singleton-bound one),
+            // so it's built on demand via this factory — one extra
+            // runtime-supplied Account parameter alongside the rest, which
+            // ActivatorUtilities resolves from the container as usual.
+            services.AddSingleton<Func<Account, AccountProjectionViewModel>>(sp =>
+                account => ActivatorUtilities.CreateInstance<AccountProjectionViewModel>(sp, account));
+
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<ShellView>();
             services.AddTransient<PlaidLinkViewModel>();

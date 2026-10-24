@@ -11,16 +11,18 @@ namespace CashProjection.ViewModels
     {
         private readonly ChangeHistoryService _historyService;
         private readonly IDialogService _dialogService;
+        private readonly int _accountId;
         private readonly Action _onDataChanged;
 
         public event Action? RequestClose;
 
         public ObservableCollection<ChangeHistoryEntry> Entries { get; } = new();
 
-        public ChangeHistoryViewModel(ChangeHistoryService historyService, IDialogService dialogService, Action onDataChanged)
+        public ChangeHistoryViewModel(ChangeHistoryService historyService, IDialogService dialogService, int accountId, Action onDataChanged)
         {
             _historyService = historyService;
             _dialogService = dialogService;
+            _accountId = accountId;
             _onDataChanged = onDataChanged;
             Reload();
         }
@@ -28,7 +30,7 @@ namespace CashProjection.ViewModels
         public void Reload()
         {
             Entries.Clear();
-            foreach (var entry in _historyService.GetAllNewestFirst())
+            foreach (var entry in _historyService.GetAllNewestFirst(_accountId))
                 Entries.Add(entry);
         }
 
@@ -55,7 +57,7 @@ namespace CashProjection.ViewModels
             if (!confirmed)
                 return;
 
-            _historyService.RollbackTo(entry.TimestampUtc);
+            _historyService.RollbackTo(entry.TimestampUtc, _accountId);
             _onDataChanged();
             Reload();
         }

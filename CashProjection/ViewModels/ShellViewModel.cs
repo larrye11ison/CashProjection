@@ -1,13 +1,12 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue;
-using DispatcherQueuePriority = Microsoft.UI.Dispatching.DispatcherQueuePriority;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using CashProjection.Data.Repositories;
@@ -35,6 +34,7 @@ namespace CashProjection.ViewModels
         private readonly SecretStoreFactory _secretStores;
         private readonly UnseenTransactionsTracker _unseenTracker;
         private readonly IDialogService _dialogService;
+        private readonly Func<Account, AccountProjectionViewModel> _accountVMFactory;
         private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         private readonly DispatcherTimer _syncTimer;
 
@@ -90,11 +90,14 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private AccountListItemViewModel? _selectedAccountEntry;
 
+        // Every account now gets the same projection/matching-capable view
+        // — rebuilt via _accountVMFactory whenever SelectedAccount changes,
+        // rather than one fixed DI singleton bound to a single account.
         [ObservableProperty]
-        private AccountTransactionsViewModel? _otherAccountVM;
+        private AccountProjectionViewModel _accountVM = null!;
 
         public ShellViewModel(
-            AccountProjectionViewModel accountVM,
+            Func<Account, AccountProjectionViewModel> accountVMFactory,
             StatusBarViewModel statusVM,
             ChangeHistoryService changeHistory,
             MatchRepository matchRepo,
@@ -110,7 +113,7 @@ namespace CashProjection.ViewModels
             IDialogService dialogService)
         {
             StatusVM = statusVM;
-            AccountVM = accountVM;
+            _accountVMFactory = accountVMFactory;
             _changeHistory = changeHistory;
             _matchRepo = matchRepo;
             _itemRepo = itemRepo;
@@ -124,10 +127,18 @@ namespace CashProjection.ViewModels
             _unseenTracker = unseenTracker;
             _dialogService = dialogService;
             SearchResults = new ObservableCollection<SearchResult>();
+
+            // Guarantees at least one Account row exists — previously this
+            // happened implicitly because AccountProjectionViewModel (a DI
+            // singleton) called this in its own constructor before
+            // ShellViewModel's ever ran; now that it's built on demand per
+            // selected account instead, nothing else guarantees it.
+            _accountRepo.GetOrCreateActiveAccount();
+
             Accounts = new ObservableCollection<AccountListItemViewModel>(
                 accountRepo.GetAll().Select(a => new AccountListItemViewModel(a)));
             RefreshAccountListEntries();
-            SelectedAccountEntry = Accounts.FirstOrDefault(e => e.Account.SupportsProjections) ?? Accounts.FirstOrDefault();
+            SelectedAccountEntry = Accounts.FirstOrDefault(e => e.Account.IsActive) ?? Accounts.FirstOrDefault();
             StatusVM.Report("Ready");
 
             // Plaid's /transactions/sync is the cheap, cursor-based
@@ -136,23 +147,7 @@ namespace CashProjection.ViewModels
             _syncTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
             _syncTimer.Tick += (_, _) => _ = RunBackgroundSyncAsync();
             _syncTimer.Start();
-
-            // EditSelected/PushForwardSelected act on AccountVM's own
-            // selection, which lives on a different object — the generated
-            // RelayCommands don't auto-recompute CanExecute for a property
-            // change on someone else's VM, so poke them explicitly.
-            AccountVM.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName == nameof(AccountProjectionViewModel.SelectedTransaction))
-                {
-                    EditSelectedCommand.NotifyCanExecuteChanged();
-                    PushForwardSelectedCommand.NotifyCanExecuteChanged();
-                    CorrectBalanceSelectedCommand.NotifyCanExecuteChanged();
-                }
-            };
         }
-
-        public AccountProjectionViewModel AccountVM { get; }
 
         public StatusBarViewModel StatusVM { get; }
 
@@ -160,26 +155,12 @@ namespace CashProjection.ViewModels
 
         public ObservableCollection<AccountListItemViewModel> Accounts { get; }
 
-        // Checking is the one account with projections/matching — the
-        // toolbar's editing actions and the grid only make sense there.
-        // Every other linked account (money market, savings, a CD, a line
-        // of credit, ...) is balance-and-history-only.
-        public bool IsCheckingSelected => SelectedAccount?.SupportsProjections == true;
-
-        public bool IsOtherAccountSelected => SelectedAccount is not null && !IsCheckingSelected;
-
-        // Window-rooted XAML can't use a Converter inside {x:Bind} (the
-        // generated binding code needs a FrameworkElement "converter
-        // lookup root," and Window — unlike WPF's — isn't one), so the
-        // already-converted values are exposed directly instead.
-        public Visibility CheckingVisibility => IsCheckingSelected ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility OtherAccountVisibility => IsOtherAccountSelected ? Visibility.Visible : Visibility.Collapsed;
+        public bool HasSelectedAccount => SelectedAccount is not null;
 
         // The shared header's balance block — sourced directly from
         // SelectedAccount (which already carries StartingBalance/
-        // StartingBalanceAsOf) rather than proxying through AccountVM or
-        // OtherAccountVM, since the header has to work identically no
-        // matter which kind of account is currently selected.
+        // StartingBalanceAsOf) rather than proxying through AccountVM,
+        // since a sync only updates the latter in place.
         public string SelectedAccountBalanceLine =>
             SelectedAccount is null ? string.Empty : $"Balance: {SelectedAccount.StartingBalance:C2}";
 
@@ -190,25 +171,42 @@ namespace CashProjection.ViewModels
 
         partial void OnSelectedAccountChanged(Account? value)
         {
-            OnPropertyChanged(nameof(IsCheckingSelected));
-            OnPropertyChanged(nameof(IsOtherAccountSelected));
-            OnPropertyChanged(nameof(CheckingVisibility));
-            OnPropertyChanged(nameof(OtherAccountVisibility));
+            OnPropertyChanged(nameof(HasSelectedAccount));
             OnPropertyChanged(nameof(SelectedAccountBalanceLine));
             OnPropertyChanged(nameof(SelectedAccountBalanceAsOfLine));
 
-            OtherAccountVM = value is not null && !value.SupportsProjections
-                ? new AccountTransactionsViewModel(value, _bankRepo)
-                : null;
-
-            // The user is now looking at this account, so whatever came in
-            // since the last time they looked is no longer "unseen".
             if (value is not null)
             {
+                AccountVM = _accountVMFactory(value);
+
+                // The user is now looking at this account, so whatever came
+                // in since the last time they looked is no longer "unseen".
                 _unseenTracker.MarkSeen(value.Id);
                 var entry = Accounts.FirstOrDefault(e => e.Id == value.Id);
                 if (entry is not null)
                     entry.HasUnseenTransactions = false;
+            }
+        }
+
+        // EditSelected/PushForwardSelected act on AccountVM's own
+        // selection, which lives on a different object — the generated
+        // RelayCommands don't auto-recompute CanExecute for a property
+        // change on someone else's VM, so poke them explicitly. Re-wired
+        // every time AccountVM itself is replaced (switching accounts).
+        partial void OnAccountVMChanged(AccountProjectionViewModel? oldValue, AccountProjectionViewModel newValue)
+        {
+            if (oldValue is not null)
+                oldValue.PropertyChanged -= AccountVM_PropertyChanged;
+            newValue.PropertyChanged += AccountVM_PropertyChanged;
+        }
+
+        private void AccountVM_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(AccountProjectionViewModel.SelectedTransaction))
+            {
+                EditSelectedCommand.NotifyCanExecuteChanged();
+                PushForwardSelectedCommand.NotifyCanExecuteChanged();
+                CorrectBalanceSelectedCommand.NotifyCanExecuteChanged();
             }
         }
 
@@ -220,16 +218,10 @@ namespace CashProjection.ViewModels
             SelectedAccount = value?.Account;
         }
 
-        // Called after a sync completes, so whichever non-checking account
-        // is currently on screen picks up fresh balance/transaction data
-        // without the user having to re-select it.
-        public void RefreshOtherAccountView() => OtherAccountVM?.Refresh();
-
-        // SelectedAccount, AccountVM's internal account, and
-        // OtherAccountVM's internal account are three independent
-        // in-memory copies of the same database row — a sync only updates
-        // the latter two directly, so the shared header needs its own
-        // explicit refresh to avoid showing a stale balance after sync.
+        // SelectedAccount and AccountVM's internal account are two
+        // independent in-memory copies of the same database row — a sync
+        // only updates the latter directly, so the shared header needs its
+        // own explicit refresh to avoid showing a stale balance after sync.
         public void RefreshSelectedAccountHeader()
         {
             if (SelectedAccount is null)
@@ -248,12 +240,18 @@ namespace CashProjection.ViewModels
         }
 
         // Pushes fresh balances (and unseen-transaction flags) into the
-        // dropdown's rows. Called after every sync — the dropdown is a
-        // separate set of view-model objects from SelectedAccount/AccountVM/
-        // OtherAccountVM, so it needs its own explicit refresh too.
+        // dropdown's rows, and picks up any account PlaidSyncService's
+        // account-discovery pass just added that isn't in the dropdown yet.
+        // Called after every sync.
         public void RefreshAccountListEntries()
         {
             var fresh = _accountRepo.GetAll().ToDictionary(a => a.Id);
+
+            foreach (var account in fresh.Values)
+            {
+                if (!Accounts.Any(e => e.Id == account.Id))
+                    Accounts.Add(new AccountListItemViewModel(account));
+            }
 
             foreach (var entry in Accounts)
             {
@@ -271,7 +269,8 @@ namespace CashProjection.ViewModels
             }
         }
 
-        // Re-syncs with Plaid and refreshes every view that shows bank
+        // Discovers any not-yet-local accounts under the Plaid Item,
+        // re-syncs with Plaid, and refreshes every view that shows bank
         // data. Shared by app startup, the periodic timer, and a manual
         // "Reconnect Bank" so there's exactly one place that knows what
         // "a sync just happened" means for the UI.
@@ -282,6 +281,7 @@ namespace CashProjection.ViewModels
 
             try
             {
+                await _syncService.DiscoverAccountsAsync();
                 var changedCount = await _syncService.SyncAsync(_accountRepo.GetAll());
                 if (changedCount > 0)
                     _matchingService.FindAndRecordPresumptiveMatches(AccountVM.AccountId);
@@ -295,20 +295,17 @@ namespace CashProjection.ViewModels
                         // this updates the balance/"as of" figures in place on
                         // the existing view-model objects (every sync re-reads
                         // the account's current balance from Plaid), so it
-                        // never visibly disturbs the grid.
+                        // never visibly disturbs the grid. Also picks up any
+                        // newly-discovered account into the dropdown.
                         AccountVM.RefreshAccountFromDatabase();
                         RefreshSelectedAccountHeader();
 
-                        // ReloadTransactionsFromDatabase/RefreshOtherAccountView
-                        // clear and rebuild their collections from scratch —
-                        // visible as a flash in the grid — so skip them on the
-                        // (overwhelmingly common) periodic pass that found
-                        // nothing new to show.
+                        // ReloadTransactionsFromDatabase clears and rebuilds
+                        // its collection from scratch — visible as a flash
+                        // in the grid — so skip it on the (overwhelmingly
+                        // common) periodic pass that found nothing new.
                         if (changedCount > 0)
-                        {
                             AccountVM.ReloadTransactionsFromDatabase();
-                            RefreshOtherAccountView();
-                        }
                     }
                     finally
                     {
@@ -365,25 +362,6 @@ namespace CashProjection.ViewModels
         private bool CanCorrectBalanceOnSelection() =>
             AccountVM?.SelectedTransaction is { IsReadOnly: true, IsSyntheticPendingGap: false };
 
-        // Closes whichever single-instance overlay is currently open — the
-        // one deterministic Escape-dismiss path shared by every popover
-        // except Find (which has its own key handling for Up/Down/Enter
-        // too). See ShellView.xaml.cs's Overlay_PreviewKeyDown for why this
-        // doesn't just rely on each popover's own IsCancel button.
-        public void CancelActiveOverlay()
-        {
-            if (IsEditorOpen)
-                EditorVM?.CancelCommand.Execute(null);
-            else if (IsBalanceCorrectionOpen)
-                BalanceCorrectionVM?.CancelCommand.Execute(null);
-            else if (IsMatchReviewOpen)
-                MatchReviewVM?.CloseCommand.Execute(null);
-            else if (IsChangeHistoryOpen)
-                ChangeHistoryVM?.CloseCommand.Execute(null);
-            else if (IsPlaidSettingsOpen)
-                PlaidSettingsVM?.CloseCommand.Execute(null);
-        }
-
         private void OpenEditor(ProjectionItemViewModel? target)
         {
             var vm = new ProjectionItemEditorViewModel(AccountVM, target);
@@ -406,7 +384,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenHistory()
         {
-            var vm = new ChangeHistoryViewModel(_changeHistory, _dialogService, AccountVM.ReloadTransactionsFromDatabase);
+            var vm = new ChangeHistoryViewModel(_changeHistory, _dialogService, AccountVM.AccountId, AccountVM.ReloadTransactionsFromDatabase);
             vm.RequestClose += () =>
             {
                 IsChangeHistoryOpen = false;
@@ -448,7 +426,7 @@ namespace CashProjection.ViewModels
             var expiredMessage = expired > 0 ? $" Expired {expired} stale match(es)." : "";
             StatusVM.Report(foundMessage + expiredMessage, busy: false);
 
-            var vm = new MatchReviewViewModel(_matchRepo, _itemRepo, _bankRepo, _changeHistory, AccountVM.ReloadTransactionsFromDatabase);
+            var vm = new MatchReviewViewModel(_matchRepo, _itemRepo, _bankRepo, _changeHistory, AccountVM.AccountId, AccountVM.ReloadTransactionsFromDatabase);
             vm.RequestClose += () =>
             {
                 IsMatchReviewOpen = false;
@@ -476,7 +454,6 @@ namespace CashProjection.ViewModels
             StatusVM.Report("Bank connection restored — syncing...", busy: true);
             _ = RunBackgroundSyncAsync();
         }
-
 
         [RelayCommand]
         public void OpenFind()

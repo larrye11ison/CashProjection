@@ -70,15 +70,38 @@
                                         ToolTipService.ToolTip="Projection item — editable, not yet a real bank transaction"
                                         Visibility="{Binding IsEditable, Converter={StaticResource BoolToVis}}" />
 
-                                    <FontIcon
+                                    <!--
+                                        Segoe Fluent Icons has no literal
+                                        currency/dollar glyph (checked the
+                                        full icon reference), so this layers
+                                        a plain "$" character with the
+                                        StockDown glyph (EB0F) as a badge —
+                                        reads much more clearly as "money,
+                                        trending down" than a plain arrow
+                                        badge did.
+                                    -->
+                                    <Grid
                                         Grid.Column="1"
+                                        Width="16"
+                                        Height="16"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
-                                        FontSize="14"
-                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                        Glyph="&#xE814;"
                                         ToolTipService.ToolTip="Lowest projected balance over the next 30 days"
-                                        Visibility="{Binding IsLowestNearNow, Converter={StaticResource BoolToVis}}" />
+                                        Visibility="{Binding IsLowestNearNow, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontSize="14"
+                                            FontWeight="Bold"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Text="$" />
+                                        <FontIcon
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Bottom"
+                                            FontSize="9"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Glyph="&#xEB0F;" />
+                                    </Grid>
 
                                     <FontIcon
                                         Grid.Column="2"
@@ -124,13 +147,25 @@
                         Width="120"
                         Binding="{Binding DepositDisplay}"
                         Header="Deposit"
-                        IsReadOnly="True" />
+                        IsReadOnly="True">
+                        <controls:DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Right" />
+                            </Style>
+                        </controls:DataGridTextColumn.ElementStyle>
+                    </controls:DataGridTextColumn>
 
                     <controls:DataGridTextColumn
                         Width="120"
                         Binding="{Binding PaymentDisplay}"
                         Header="Payment"
-                        IsReadOnly="True" />
+                        IsReadOnly="True">
+                        <controls:DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Right" />
+                            </Style>
+                        </controls:DataGridTextColumn.ElementStyle>
+                    </controls:DataGridTextColumn>
 
                     <!--
                         Fluent 2 "warning colors" highlight just this cell

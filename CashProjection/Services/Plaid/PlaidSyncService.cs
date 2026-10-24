@@ -34,6 +34,58 @@ namespace CashProjection.Services.Plaid
             _statusVM = statusVM;
         }
 
+        // Creates a local Account row for every account Plaid reports under
+        // the linked Item that doesn't have one yet — e.g. a savings or
+        // money-market share that was never explicitly added before. Best-
+        // effort: any Plaid error here is swallowed rather than surfaced,
+        // since this is a background convenience and SyncAsync (called
+        // right after, in the same background-sync pass) will still run
+        // and report its own errors normally either way. New accounts
+        // start IsActive=false — only ever flips the account the app
+        // defaults to showing at launch, never multiple at once.
+        public async Task DiscoverAccountsAsync()
+        {
+            var environment = _settings.GetEnvironment();
+            var accessToken = _secretStores.AccessTokenStore.Get(PlaidLinkService.AccessTokenKey(environment));
+            if (accessToken is null)
+                return;
+
+            try
+            {
+                var client = _clientFactory.Create();
+                var response = await client.AccountsGetAsync(new Going.Plaid.Accounts.AccountsGetRequest
+                {
+                    AccessToken = accessToken,
+                });
+                if (response.Error is not null)
+                    return;
+
+                var itemId = response.Item?.ItemId;
+
+                foreach (var plaidAccount in response.Accounts)
+                {
+                    if (plaidAccount.AccountId is null)
+                        continue;
+                    if (_accountRepo.GetByPlaidAccountId(plaidAccount.AccountId) is not null)
+                        continue;
+
+                    _accountRepo.Insert(new Account
+                    {
+                        Name = plaidAccount.Name ?? plaidAccount.OfficialName ?? "Linked Account",
+                        IsActive = false,
+                        PlaidItemId = itemId,
+                        PlaidAccountId = plaidAccount.AccountId,
+                        StartingBalance = plaidAccount.Balances?.Current ?? 0m,
+                        StartingBalanceAsOf = DateTime.UtcNow,
+                    });
+                }
+            }
+            catch
+            {
+                // Best-effort — see method summary.
+            }
+        }
+
         // Syncs every account passed in that's linked to the same Plaid
         // Item in a single pass. The sync cursor is Item-scoped, not
         // account-scoped, so this always does exactly one

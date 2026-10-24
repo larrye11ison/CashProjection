@@ -16,6 +16,7 @@ namespace CashProjection.Views
             ViewModel = vm;
             Title = "Connect your bank account";
             WindowBackdropHelper.ApplyMica(this);
+            WindowIconHelper.SetIcon(this, "Assets\\AppIcon.ico");
 
             vm.RequestClose += (_, _) => DispatcherQueue.TryEnqueue(Close);
 

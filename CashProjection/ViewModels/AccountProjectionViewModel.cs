@@ -51,6 +51,7 @@ namespace CashProjection.ViewModels
         private WeakReference<FrameworkElement>? _viewRef;
 
         public AccountProjectionViewModel(
+            Account account,
             AccountRepository accountRepo,
             ProjectionItemRepository itemRepo,
             BankTransactionRepository bankRepo,
@@ -69,7 +70,7 @@ namespace CashProjection.ViewModels
             _changeHistory = changeHistory;
             _dialogService = dialogService;
 
-            _account = _accountRepo.GetOrCreateActiveAccount();
+            _account = account;
 
             _transactions = [];
 
@@ -231,7 +232,7 @@ namespace CashProjection.ViewModels
             model.UpdatedAtUtc = DateTime.UtcNow;
 
             _itemRepo.Insert(model);
-            _changeHistory.Record(ChangeEntityType.ProjectionItem, model.Id, ChangeType.Added, before: null, after: model, $"Added '{model.Name}'");
+            _changeHistory.Record(_account.Id, ChangeEntityType.ProjectionItem, model.Id, ChangeType.Added, before: null, after: model, $"Added '{model.Name}'");
             _redoStack.Clear();
 
             var newTransaction = new ProjectionItemViewModel(model);
@@ -275,7 +276,7 @@ namespace CashProjection.ViewModels
             var after = target.ToModel();
 
             _itemRepo.Update(after);
-            _changeHistory.Record(ChangeEntityType.ProjectionItem, after.Id, ChangeType.Modified, before, after, $"Edited '{after.Name}' — {ChangeDescriber.DescribeProjectionItemDiff(before, after)}");
+            _changeHistory.Record(_account.Id, ChangeEntityType.ProjectionItem, after.Id, ChangeType.Modified, before, after, $"Edited '{after.Name}' — {ChangeDescriber.DescribeProjectionItemDiff(before, after)}");
             _redoStack.Clear();
             _statusVM?.Report($"Saved '{after.Name}'.", busy: false, StatusSeverity.Info);
         }
@@ -300,7 +301,7 @@ namespace CashProjection.ViewModels
             {
                 var before = transaction.ToModel();
                 _itemRepo.Delete(transaction.Id);
-                _changeHistory.Record(ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Deleted, before, after: null, $"Deleted '{transaction.Name}'");
+                _changeHistory.Record(_account.Id, ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Deleted, before, after: null, $"Deleted '{transaction.Name}'");
                 _redoStack.Clear();
 
                 _transactions.Remove(transaction);
@@ -385,7 +386,7 @@ namespace CashProjection.ViewModels
             var after = transaction.ToModel();
 
             _itemRepo.Update(after);
-            _changeHistory.Record(ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Rescheduled, before, after, $"Pushed '{transaction.Name}' forward — {ChangeDescriber.DescribeProjectionItemDiff(before, after)}");
+            _changeHistory.Record(_account.Id, ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Rescheduled, before, after, $"Pushed '{transaction.Name}' forward — {ChangeDescriber.DescribeProjectionItemDiff(before, after)}");
             _redoStack.Clear();
         }
 
@@ -418,7 +419,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void Undo()
         {
-            var latest = _changeHistory.GetAllNewestFirst().FirstOrDefault();
+            var latest = _changeHistory.GetAllNewestFirst(_account.Id).FirstOrDefault();
             if (latest is null)
                 return;
 
@@ -516,7 +517,10 @@ namespace CashProjection.ViewModels
         // starting balance, so the UI doesn't go stale.
         public void RefreshAccountFromDatabase()
         {
-            var fresh = _accountRepo.GetOrCreateActiveAccount();
+            var fresh = _accountRepo.GetById(_account.Id);
+            if (fresh is null)
+                return;
+
             _account.Name = fresh.Name;
             _account.StartingBalance = fresh.StartingBalance;
             _account.StartingBalanceAsOf = fresh.StartingBalanceAsOf;
@@ -625,6 +629,16 @@ namespace CashProjection.ViewModels
                 // silently vanishing into an unrelated row's balance.
                 decimal? pendingGapAmount = null;
 
+                // Every date-group walked BEFORE the first checkpoint is
+                // found gets its Balance assigned from the raw live
+                // StartingBalance, with no idea yet that a gap exists — the
+                // gap is only known once the walk actually reaches that
+                // checkpoint, which can be several groups further back.
+                // Collected here so they can be corrected retroactively
+                // once the gap is actually known (below), rather than
+                // silently keeping their un-adjusted (wrong) Balance.
+                var groupsBeforeFirstCheckpoint = new List<IGrouping<DateTime, ProjectionItemViewModel>>();
+
                 var runningReal = _account.StartingBalance;
                 foreach (var dateGroup in realGroupsByDateDescending)
                 {
@@ -645,6 +659,10 @@ namespace CashProjection.ViewModels
                         // assigned at all.
                         runningReal = checkpoint.Balance;
                     }
+                    else if (pendingGapAmount is null)
+                    {
+                        groupsBeforeFirstCheckpoint.Add(dateGroup);
+                    }
 
                     foreach (var t in dateGroup)
                         t.Balance = runningReal; // balance as of end of this date
@@ -661,6 +679,18 @@ namespace CashProjection.ViewModels
                 // known history) means there's nothing to compare the live
                 // balance against, so no placeholder either.
                 SyncPendingGapPlaceholder(pendingGapAmount ?? 0m);
+
+                // Retroactively correct every row assigned before the gap
+                // was known — e.g. a real transaction dated between today
+                // and the checkpoint should reflect that the pending
+                // transaction hasn't posted yet either, the same as today's
+                // own balance does.
+                if (pendingGapAmount is { } gap && Math.Abs(gap) >= 0.01m)
+                {
+                    foreach (var dateGroup in groupsBeforeFirstCheckpoint)
+                        foreach (var t in dateGroup)
+                            t.Balance -= gap;
+                }
 
                 // Keep EffectiveSortDate in sync with the item's own date
                 // for every unmatched row — PushForward/edits mutate
@@ -842,7 +872,17 @@ namespace CashProjection.ViewModels
                 }
             }
 
-            ResortAndRecalculate();
+            // Deferred, not called inline: we're still synchronously inside
+            // _transactions' own CollectionChanged dispatch for whatever
+            // Add/Remove got us here (e.g. CommitNewItem's _transactions.Add),
+            // and ResortAndRecalculate ultimately mutates this same
+            // collection again (ReorderTransactionsToMatch's Move calls,
+            // SyncPendingGapPlaceholder's Add/Remove) — ObservableCollection
+            // throws ("Cannot change ObservableCollection during a
+            // CollectionChanged event") if you do that reentrantly. Running
+            // it on the next dispatcher tick instead means it's never
+            // nested inside the triggering mutation's own event raise.
+            _dispatcherQueue.TryEnqueue(ResortAndRecalculate);
         }
 
         private sealed class TransactionComparer : System.Collections.IComparer, IComparer<ProjectionItemViewModel>

@@ -17,6 +17,7 @@ namespace CashProjection.ViewModels
         private readonly ProjectionItemRepository _itemRepo;
         private readonly BankTransactionRepository _bankRepo;
         private readonly ChangeHistoryService _changeHistory;
+        private readonly int _accountId;
         private readonly Action _onDataChanged;
 
         public event Action? RequestClose;
@@ -28,12 +29,14 @@ namespace CashProjection.ViewModels
             ProjectionItemRepository itemRepo,
             BankTransactionRepository bankRepo,
             ChangeHistoryService changeHistory,
+            int accountId,
             Action onDataChanged)
         {
             _matchRepo = matchRepo;
             _itemRepo = itemRepo;
             _bankRepo = bankRepo;
             _changeHistory = changeHistory;
+            _accountId = accountId;
             _onDataChanged = onDataChanged;
             Reload();
         }
@@ -42,13 +45,17 @@ namespace CashProjection.ViewModels
         {
             MatchGroups.Clear();
 
+            // GetByStatus is global across every account — only this
+            // account's own projection items should show up in its Match
+            // Review list now that more than one account can have
+            // presumptive matches.
             var groups = _matchRepo
                 .GetByStatus(MatchStatus.Presumptive)
                 .GroupBy(m => m.ProjectionItemId)
                 .Select(byItem =>
                 {
                     var item = _itemRepo.GetById(byItem.Key);
-                    if (item is null)
+                    if (item is null || item.AccountId != _accountId)
                         return null;
 
                     var candidates = byItem
@@ -126,7 +133,7 @@ namespace CashProjection.ViewModels
             afterMatch.MatchedAtItemDate = row.ProjectionItem.TransactionDate;
             _matchRepo.Update(afterMatch);
             _changeHistory.Record(
-                ChangeEntityType.Match, row.Match.Id, ChangeType.MatchAccepted,
+                row.ProjectionItem.AccountId, ChangeEntityType.Match, row.Match.Id, ChangeType.MatchAccepted,
                 beforeMatch, afterMatch,
                 $"Matched '{row.ProjectionItem.Name}' to '{row.BankTransaction.Description}'",
                 batchId);
@@ -140,7 +147,7 @@ namespace CashProjection.ViewModels
             var afterItem = itemVm.ToModel();
             _itemRepo.Update(afterItem);
             _changeHistory.Record(
-                ChangeEntityType.ProjectionItem, afterItem.Id, ChangeType.Rescheduled,
+                row.ProjectionItem.AccountId, ChangeEntityType.ProjectionItem, afterItem.Id, ChangeType.Rescheduled,
                 beforeItem, afterItem,
                 $"Rescheduled '{afterItem.Name}' after accepting match — {ChangeDescriber.DescribeProjectionItemDiff(beforeItem, afterItem)}",
                 batchId);
@@ -161,7 +168,7 @@ namespace CashProjection.ViewModels
                 afterStale.DecidedAtUtc = DateTime.UtcNow;
                 _matchRepo.Update(afterStale);
                 _changeHistory.Record(
-                    ChangeEntityType.Match, stale.Id, ChangeType.MatchRejected,
+                    row.ProjectionItem.AccountId, ChangeEntityType.Match, stale.Id, ChangeType.MatchRejected,
                     beforeStale, afterStale,
                     $"Superseded by confirming a different match for '{row.ProjectionItem.Name}' / '{row.BankTransaction.Description}'",
                     batchId);
@@ -186,7 +193,7 @@ namespace CashProjection.ViewModels
             afterMatch.DecidedAtUtc = DateTime.UtcNow;
             _matchRepo.Update(afterMatch);
             _changeHistory.Record(
-                ChangeEntityType.Match, row.Match.Id, ChangeType.MatchRejected,
+                row.ProjectionItem.AccountId, ChangeEntityType.Match, row.Match.Id, ChangeType.MatchRejected,
                 beforeMatch, afterMatch,
                 $"Rejected presumptive match for '{row.ProjectionItem.Name}' against '{row.BankTransaction.Description}'");
 
