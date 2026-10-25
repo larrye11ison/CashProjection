@@ -20,18 +20,33 @@
             Padding="12"
             Background="{ThemeResource SystemFillColorCriticalBrush}"
             CornerRadius="4">
-            <StackPanel Orientation="Horizontal" Spacing="10">
+            <!--
+                A horizontal StackPanel gives its children unconstrained
+                width along the stacking axis during measure, so
+                TextWrapping="Wrap" had nothing to wrap against — the text
+                just measured at its full, unwrapped width and got clipped
+                by the border. A Grid's columns actually constrain the
+                text's width (Auto for the icon, * for the text), the same
+                fix used for ChangeHistoryDialog's row details.
+            -->
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
                 <FontIcon
+                    Grid.Column="0"
                     VerticalAlignment="Top"
                     FontSize="22"
                     Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                     Glyph="&#xE7BA;" />
                 <TextBlock
+                    Grid.Column="1"
                     Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                     FontWeight="Bold"
                     Text="This overrides your bank's reported balance and is treated as a verified fact — every earlier transaction's displayed balance will be recalculated from it. This cannot be undone with Ctrl+Z. Only do this if you've confirmed the correct balance yourself (e.g. your bank's own website)."
                     TextWrapping="Wrap" />
-            </StackPanel>
+            </Grid>
         </Border>
 
         <!--  Read-only context so it's clear which transaction this is.  -->
@@ -48,7 +63,10 @@
         </StackPanel>
 
         <StackPanel Spacing="4">
-            <TextBox Header="Correct balance" Text="{x:Bind ViewModel.NewBalanceText, Mode=TwoWay}" />
+            <TextBox
+                x:Name="NewBalanceBox"
+                Header="Correct balance"
+                Text="{x:Bind ViewModel.NewBalanceText, Mode=TwoWay}" />
             <TextBlock
                 FontSize="11"
                 Opacity="0.65"

@@ -2,48 +2,129 @@
     x:Class="CashProjection.Views.ChangeHistoryDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:CommunityToolkit.WinUI.UI.Controls"
     Title="Change history (newest first)"
     CloseButtonText="Close">
 
-    <controls:DataGrid
-        Width="860"
-        Height="520"
-        AutoGenerateColumns="False"
-        CanUserSortColumns="False"
-        GridLinesVisibility="Horizontal"
-        HeadersVisibility="Column"
-        IsReadOnly="True"
-        ItemsSource="{x:Bind ViewModel.Entries, Mode=OneWay}">
-        <controls:DataGrid.Columns>
-            <controls:DataGridTextColumn
-                Width="170"
-                Binding="{Binding LocalTimestampDisplay}"
-                Header="When"
-                IsReadOnly="True" />
-            <controls:DataGridTextColumn
-                Width="110"
-                Binding="{Binding ChangeType}"
-                Header="Change"
-                IsReadOnly="True" />
-            <controls:DataGridTextColumn
-                Width="*"
-                Binding="{Binding Description}"
-                Header="What changed"
-                IsReadOnly="True" />
-            <controls:DataGridTemplateColumn
-                Width="220"
-                Header="Actions"
-                IsReadOnly="True">
-                <controls:DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Button Click="UndoButton_Click" Content="Undo this" Tag="{Binding}" />
-                            <Button Click="RollbackButton_Click" Content="Roll back to here" Tag="{Binding}" />
-                        </StackPanel>
-                    </DataTemplate>
-                </controls:DataGridTemplateColumn.CellTemplate>
-            </controls:DataGridTemplateColumn>
-        </controls:DataGrid.Columns>
-    </controls:DataGrid>
+    <!--
+        ContentDialog's own template reads MaxWidth from the
+        ContentDialogMaxWidth THEME RESOURCE directly (a static lookup on
+        the template's inner Border, not a TemplateBinding) — setting
+        MaxWidth on the ContentDialog element itself never reaches it.
+        Overriding the key locally here is the documented way to widen a
+        single dialog without changing every ContentDialog app-wide.
+    -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">780</x:Double>
+    </ContentDialog.Resources>
+
+    <!--
+        A plain ListView with a hand-built header row, rather than
+        DataGrid — CommunityToolkit.WinUI's DataGrid RowDetailsTemplate
+        (tried first) never sized its details row to its wrapped content;
+        the row stayed clipped to a sliver no matter how the content was
+        constrained. ListView's ItemTemplate reliably stretches to and
+        wraps within the list's actual width, so each entry is modeled
+        here as its own two-row Grid: the usual columns on top, "what
+        changed" wrapping freely underneath.
+    -->
+    <Grid Width="700" Height="520">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid
+            Padding="12,8"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="220" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="When" />
+            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Change" />
+            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Actions" />
+        </Grid>
+
+        <!--
+            SelectionMode="Single" (not "None") deliberately, even though
+            nothing here needs to know WHICH entry is selected — it's what
+            gives arrow-key navigation both the Fluent selection accent bar
+            (instead of a bare keyboard-focus rectangle) and WinUI's
+            built-in "scroll the selected item into view" behavior, which
+            only triggers off a real selection change, not plain focus
+            movement.
+        -->
+        <ListView
+            Grid.Row="1"
+            HorizontalContentAlignment="Stretch"
+            ItemsSource="{x:Bind ViewModel.Entries, Mode=OneWay}"
+            SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid
+                        Margin="0,0,0,2"
+                        Padding="12,8"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="0,0,0,1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="220" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="{Binding LocalTimestampDisplay}" />
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding ChangeType}" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                <Button Click="UndoButton_Click" Content="Undo this" Tag="{Binding}" />
+                                <Button Click="RollbackButton_Click" Content="Roll back to here" Tag="{Binding}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,4,0,0"
+                            FontSize="11"
+                            Opacity="0.65"
+                            Text="{Binding Description}"
+                            TextWrapping="Wrap" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!--
+            Rollback confirms in-place via this overlay rather than a
+            second ContentDialog — see ChangeHistoryViewModel's comment on
+            PendingRollbackEntry for why. Spans both rows so it dims the
+            header too, not just the list.
+        -->
+        <Border
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsConfirmingRollback, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Border
+                Width="420"
+                Padding="20"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{x:Bind ViewModel.RollbackConfirmationMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Button Command="{x:Bind ViewModel.CancelRollbackCommand}" Content="Cancel" />
+                        <Button Command="{x:Bind ViewModel.ConfirmRollbackCommand}" Content="Roll back" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
 </ContentDialog>

@@ -14,8 +14,15 @@ namespace CashProjection.ViewModels
 
         public decimal ProjectionAmount => ProjectionItem.Payment ?? -(ProjectionItem.Deposit ?? 0m);
 
-        // Pre-formatted for the dialog — WinUI's Binding markup has no StringFormat.
-        public string ProjectionAmountDisplay => ProjectionAmount.ToString("C2");
+        // Pre-formatted for the dialog — WinUI's Binding markup has no
+        // StringFormat. Labeled "Deposit"/"Payment" rather than just a
+        // signed amount — a bare "$123.45" (or "($123.45)" for a negative)
+        // doesn't make which-direction-is-this obvious at a glance the way
+        // the main grid's separate Deposit/Payment columns do.
+        public string ProjectionAmountDisplay =>
+            ProjectionItem.Deposit is { } deposit ? $"Deposit {deposit:C2}" :
+            ProjectionItem.Payment is { } payment ? $"Payment {payment:C2}" :
+            "$0.00";
         public string ProjectionDateDisplay => ProjectionItem.TransactionDate.ToString("d");
 
         // Same rule as BankTransaction's vendor-name/raw-description pair —

@@ -10,8 +10,6 @@ namespace CashProjection.Views
     {
         private const double MaxAccountComboWidthDip = 10.0 * 96.0 / 2.54;
 
-        private bool _dialogHostInitialized;
-
         public ShellViewModel ViewModel { get; }
 
         public ShellView(ShellViewModel vm)
@@ -30,14 +28,31 @@ namespace CashProjection.Views
                 AccountCombo.MaxWidth = Math.Min(e.NewSize.Width * 0.5, MaxAccountComboWidthDip);
 
             // DialogHost.Root (used by IDialogService's confirm/info
-            // dialogs, e.g. Delete confirmation) needs a live XamlRoot,
-            // which isn't available until the window is actually activated.
+            // dialogs, e.g. the editor popover's Delete confirmation) needs
+            // a live XamlRoot. A one-time "set it on the first Activated"
+            // guard here used to leave it permanently stuck at null:
+            // XamlRoot isn't necessarily available yet on that very first
+            // activation (observed in practice — ConfirmAsync later threw
+            // "This element does not have a XamlRoot" when Delete was
+            // clicked, from cp_crash.txt), and the guard prevented ever
+            // retrying once that first, too-early attempt had already run.
+            // Updating on every activation instead is self-healing: each
+            // later activation gets another chance to capture a valid
+            // XamlRoot if the first one couldn't. Guarded defensively —
+            // accessing Content has also been observed (same crash log)
+            // throwing "The WinUI Desktop Window object has already been
+            // closed" during some activation-timing edge case; there's
+            // nothing useful to do here if that happens, so just skip it.
             Activated += (_, _) =>
             {
-                if (_dialogHostInitialized)
-                    return;
-                _dialogHostInitialized = true;
-                DialogHost.Root = Content.XamlRoot;
+                try
+                {
+                    if (Content.XamlRoot is { } root)
+                        DialogHost.Root = root;
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                }
             };
         }
 
