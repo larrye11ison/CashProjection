@@ -6,33 +6,132 @@
     CloseButtonText="Cancel"
     CloseButtonClick="ContentDialog_CloseButtonClick"
     DefaultButton="Primary"
+    IsPrimaryButtonEnabled="{x:Bind ViewModel.CanSaveNow, Mode=OneWay}"
     PrimaryButtonClick="ContentDialog_PrimaryButtonClick"
     PrimaryButtonText="Save"
     SecondaryButtonClick="ContentDialog_SecondaryButtonClick">
 
-    <StackPanel Width="440" Spacing="16">
-        <TextBox
-            x:Name="NameBox"
-            Header="Name"
-            Text="{x:Bind ViewModel.Scratch.Name, Mode=TwoWay}" />
+    <Grid Width="440">
+        <!--
+            Delete confirms in-place rather than via a second ContentDialog
+            (see ProjectionItemEditorViewModel's comment on
+            IsConfirmingDelete for why) — only one of these two panels is
+            ever visible at a time, occupying the same space.
+        -->
+        <StackPanel Spacing="16" Visibility="{x:Bind ViewModel.IsConfirmingDelete, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Border
+                Padding="12"
+                Background="{ThemeResource SystemFillColorCriticalBrush}"
+                CornerRadius="4">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        Grid.Column="0"
+                        VerticalAlignment="Top"
+                        FontSize="22"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        Glyph="&#xE7BA;" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        FontWeight="Bold"
+                        Text="{x:Bind ViewModel.DeleteConfirmationMessage, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                </Grid>
+            </Border>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Command="{x:Bind ViewModel.ConfirmDeleteCommand}" Content="Yes, delete it" Style="{StaticResource AccentButtonStyle}" />
+                <Button Command="{x:Bind ViewModel.CancelDeleteCommand}" Content="No, go back" />
+            </StackPanel>
+        </StackPanel>
 
-        <CalendarDatePicker Header="Date" Date="{x:Bind ViewModel.ScratchDate, Mode=TwoWay}" />
+        <StackPanel Spacing="16" Visibility="{x:Bind ViewModel.IsEditingFields, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+        <StackPanel Spacing="4">
+            <!--
+                These four fields are deliberately NOT x:Bind TwoWay —
+                x:Bind's TwoWay for TextBox.Text only pushes to the source
+                on LostFocus, which both breaks Enter-to-save (see
+                ProjectionItemEditorDialog.xaml.cs) and would mean live
+                validation/Save-button-enablement only updates once a field
+                is blurred, not as the user types. TextChanged in
+                code-behind drives both continuously instead; initial text
+                is set once in the constructor.
+            -->
+            <TextBox x:Name="NameBox" Header="Name" TextChanged="NameBox_TextChanged" />
+            <TextBlock
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                FontSize="11"
+                Text="{x:Bind ViewModel.NameError, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.NameError, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+            <CalendarDatePicker Header="Date" Date="{x:Bind ViewModel.DateInput, Mode=TwoWay}" />
+            <TextBlock
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                FontSize="11"
+                Text="{x:Bind ViewModel.DateError, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.DateError, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+        </StackPanel>
 
         <Grid ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
             <TextBox
                 x:Name="DepositBox"
+                Grid.Row="0"
                 Grid.Column="0"
                 Header="Deposit"
-                Text="{x:Bind ViewModel.Scratch.Deposit, Mode=TwoWay, Converter={StaticResource NullableDecimalToString}}" />
+                TextChanged="DepositBox_TextChanged" />
             <TextBox
                 x:Name="PaymentBox"
+                Grid.Row="0"
                 Grid.Column="1"
                 Header="Payment"
-                Text="{x:Bind ViewModel.Scratch.Payment, Mode=TwoWay, Converter={StaticResource NullableDecimalToString}}" />
+                TextChanged="PaymentBox_TextChanged" />
+
+            <TextBlock
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="0,4,0,0"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                FontSize="11"
+                Text="{x:Bind ViewModel.DepositError, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.DepositError, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+            <TextBlock
+                Grid.Row="1"
+                Grid.Column="1"
+                Margin="0,4,0,0"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                FontSize="11"
+                Text="{x:Bind ViewModel.PaymentError, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.PaymentError, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+
+            <TextBlock
+                Grid.Row="2"
+                Grid.Column="0"
+                Grid.ColumnSpan="2"
+                Margin="0,4,0,0"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                FontSize="11"
+                Text="{x:Bind ViewModel.AmountError, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.AmountError, Mode=OneWay, Converter={StaticResource StringToVis}}" />
         </Grid>
 
         <ComboBox
@@ -41,15 +140,13 @@
             SelectedItem="{x:Bind ViewModel.Scratch.Periodicity, Mode=TwoWay}" />
 
         <StackPanel Spacing="4">
-            <TextBox
-                x:Name="MatchTextBox"
-                Header="Match pattern (optional)"
-                Text="{x:Bind ViewModel.Scratch.MatchText, Mode=TwoWay}" />
+            <TextBox x:Name="MatchTextBox" Header="Match pattern (optional)" />
             <TextBlock
                 FontSize="11"
                 Opacity="0.65"
                 Text="Only used to match this item to a real bank transaction — leave blank to match on the name above."
                 TextWrapping="Wrap" />
         </StackPanel>
-    </StackPanel>
+        </StackPanel>
+    </Grid>
 </ContentDialog>

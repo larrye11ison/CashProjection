@@ -5,7 +5,12 @@
     Title="Presumptive matches found between your projections and real bank transactions"
     CloseButtonText="Close">
 
-    <ScrollViewer Width="780" Height="520">
+    <!--  See ChangeHistoryDialog.xaml's comment — MaxWidth on ContentDialog itself doesn't work; the resource key must be overridden instead.  -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">900</x:Double>
+    </ContentDialog.Resources>
+
+    <ScrollViewer Width="820" Height="520">
         <!--
             One card per projection item (the parent), with every still-open
             candidate bank transaction for it (the children) listed beneath
@@ -22,35 +27,41 @@
                         BorderThickness="1"
                         CornerRadius="4">
                         <StackPanel>
-                            <!--  Parent: the projection item.  -->
-                            <Grid Margin="0,0,0,10" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="80" />
-                                    <ColumnDefinition Width="90" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="90" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontWeight="Bold" Text="Projected" />
-                                <TextBlock Grid.Column="1" Text="{Binding ProjectionDateDisplay}" />
-
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <!--
+                                Parent: the projection item. Compact fields
+                                (label/date/amount) on top; Name and the
+                                match pattern — the free-text fields, and
+                                the ones most likely to run long — wrap on
+                                their own full-width lines below instead of
+                                being squeezed into a column and truncated.
+                            -->
+                            <StackPanel Margin="0,0,0,10" Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="80" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="130" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" FontWeight="Bold" Text="Projected" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ProjectionDateDisplay}" />
                                     <TextBlock
-                                        FontWeight="Bold"
-                                        Text="{Binding ProjectionItem.Name}"
-                                        TextTrimming="CharacterEllipsis" />
-                                    <TextBlock
-                                        FontSize="11"
-                                        Opacity="0.65"
-                                        Text="{Binding ProjectionItem.MatchText}"
-                                        TextTrimming="CharacterEllipsis"
-                                        Visibility="{Binding HasDistinctMatchPattern, Converter={StaticResource BoolToVis}}" />
-                                </StackPanel>
+                                        Grid.Column="3"
+                                        HorizontalAlignment="Right"
+                                        Text="{Binding ProjectionAmountDisplay}" />
+                                </Grid>
 
                                 <TextBlock
-                                    Grid.Column="3"
-                                    HorizontalAlignment="Right"
-                                    Text="{Binding ProjectionAmountDisplay}" />
-                            </Grid>
+                                    FontWeight="Bold"
+                                    Text="{Binding ProjectionItem.Name}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Opacity="0.65"
+                                    Text="{Binding ProjectionItem.MatchText}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding HasDistinctMatchPattern, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
 
                             <!--
                                 Children: candidate bank transactions, each
@@ -61,49 +72,64 @@
                             <ItemsControl ItemsSource="{Binding Candidates}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
+                                        <!--
+                                            A visibly distinct background
+                                            (not just the same card stroke
+                                            the parent uses) plus more
+                                            breathing room between
+                                            candidates — with several
+                                            candidates per projection item,
+                                            identical-looking bordered
+                                            blocks with only 6px between
+                                            them made it hard to tell where
+                                            one candidate ended and the
+                                            next began.
+                                        -->
                                         <Border
-                                            Margin="28,0,0,6"
+                                            Margin="28,0,0,10"
                                             Padding="12,8"
+                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                             BorderThickness="1"
                                             CornerRadius="4">
-                                            <Grid ColumnSpacing="16">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <Grid Grid.Column="0" VerticalAlignment="Center" ColumnSpacing="8">
+                                            <StackPanel Spacing="4">
+                                                <!--
+                                                    Compact fields (date,
+                                                    amount, score, actions)
+                                                    on top; the vendor
+                                                    name/description — the
+                                                    free-text field — gets
+                                                    its own full-width,
+                                                    wrapping line below via
+                                                    WrappingDualLineNameTemplate
+                                                    (SharedResources.xaml)
+                                                    instead of being
+                                                    squeezed into a column.
+                                                -->
+                                                <Grid ColumnSpacing="16">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="80" />
+                                                        <ColumnDefinition Width="130" />
                                                         <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="90" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Grid.Column="0" Text="{Binding BankDateDisplay}" />
-
-                                                    <!--  Vendor-name/raw-description styling lives in exactly one place: DualLineNameTemplate in App.xaml.  -->
-                                                    <ContentControl
-                                                        Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        Content="{Binding BankTransaction}"
-                                                        ContentTemplate="{StaticResource DualLineNameTemplate}" />
-
-                                                    <TextBlock
+                                                    <TextBlock Grid.Column="1" Text="{Binding BankAmountDisplay}" />
+                                                    <StackPanel
                                                         Grid.Column="2"
                                                         HorizontalAlignment="Right"
-                                                        Text="{Binding BankAmountDisplay}" />
+                                                        Orientation="Horizontal"
+                                                        Spacing="8">
+                                                        <TextBlock VerticalAlignment="Center" Text="{Binding ScoreDisplay}" />
+                                                        <Button Click="AcceptButton_Click" Content="Accept" Tag="{Binding}" />
+                                                        <Button Click="RejectButton_Click" Content="Reject" Tag="{Binding}" />
+                                                    </StackPanel>
                                                 </Grid>
 
-                                                <StackPanel
-                                                    Grid.Column="1"
-                                                    VerticalAlignment="Center"
-                                                    Orientation="Horizontal"
-                                                    Spacing="8">
-                                                    <TextBlock VerticalAlignment="Center" Text="{Binding ScoreDisplay}" />
-                                                    <Button Click="AcceptButton_Click" Content="Accept" Tag="{Binding}" />
-                                                    <Button Click="RejectButton_Click" Content="Reject" Tag="{Binding}" />
-                                                </StackPanel>
-                                            </Grid>
+                                                <ContentControl
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Content="{Binding BankTransaction}"
+                                                    ContentTemplate="{StaticResource WrappingDualLineNameTemplate}" />
+                                            </StackPanel>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

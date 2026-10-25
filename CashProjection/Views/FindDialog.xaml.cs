@@ -55,7 +55,25 @@ namespace CashProjection.Views
         {
             ViewModel.OnFindKeyDown(e);
             if (!ViewModel.IsFindOpen)
+            {
                 Hide();
+                return;
+            }
+
+            // Up/Down here are handled entirely in code (MoveSelection just
+            // sets SelectedSearchResult) rather than by the ListView's own
+            // keyboard navigation, since focus is still in the TextBox at
+            // this point, not the list — so ListView's automatic "scroll
+            // the newly selected item into view" never kicks in on its
+            // own; that behavior only fires as part of the ListView's own
+            // internal arrow-key handling, not generically whenever
+            // SelectedItem changes from outside it. Once the user clicks a
+            // result, focus moves into the ListView and later Up/Down
+            // presses go through that native path instead, where this
+            // already happens automatically — this call just covers the
+            // same case while focus is still in the search box.
+            if (ViewModel.SelectedSearchResult is { } selected)
+                ResultsList.ScrollIntoView(selected);
         }
 
         private void ResultsList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)

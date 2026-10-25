@@ -8,8 +8,14 @@
     PrimaryButtonClick="ContentDialog_PrimaryButtonClick"
     PrimaryButtonText="OK">
 
-    <Grid MinWidth="520">
+    <!--  See ChangeHistoryDialog.xaml's comment — MaxWidth on ContentDialog itself doesn't work; the resource key must be overridden instead.  -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">700</x:Double>
+    </ContentDialog.Resources>
+
+    <Grid Width="620">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -24,35 +30,81 @@
             Text="{x:Bind ViewModel.FindText, Mode=OneWay}"
             TextChanged="FindTextBox_TextChanged" />
 
+        <!--
+            Column headers — same column widths as the result template
+            below, so they line up. Without these there was no indication
+            of which of the two right-hand amounts was a deposit and which
+            was a payment.
+        -->
+        <Grid
+            Grid.Row="1"
+            Margin="4,0,4,4"
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="110" />
+                <ColumnDefinition Width="110" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Date" />
+            <TextBlock
+                Grid.Column="2"
+                HorizontalAlignment="Right"
+                FontWeight="SemiBold"
+                Text="Deposit" />
+            <TextBlock
+                Grid.Column="3"
+                HorizontalAlignment="Right"
+                FontWeight="SemiBold"
+                Text="Payment" />
+        </Grid>
+
         <ListView
             x:Name="ResultsList"
-            Grid.Row="1"
+            Grid.Row="2"
             Height="320"
             DoubleTapped="ResultsList_DoubleTapped"
             ItemsSource="{x:Bind ViewModel.SearchResults, Mode=OneWay}"
             SelectedItem="{x:Bind ViewModel.SelectedSearchResult, Mode=TwoWay}">
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Grid Padding="4" ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="90" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="90" />
-                            <ColumnDefinition Width="90" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{Binding Item.TransactionDateDisplay}" />
-                        <TextBlock
-                            Grid.Column="1"
-                            Text="{Binding Item.Name}"
-                            TextTrimming="CharacterEllipsis" />
-                        <TextBlock
-                            Grid.Column="2"
-                            HorizontalAlignment="Right"
-                            Text="{Binding Item.DepositDisplay}" />
-                        <TextBlock
-                            Grid.Column="3"
-                            HorizontalAlignment="Right"
-                            Text="{Binding Item.PaymentDisplay}" />
+                    <!--
+                        Date/amounts on a compact top line; the name/vendor
+                        (the field you're actually searching by, and the
+                        one most likely to be long) gets its own full-width
+                        line below via the same wrapping template used by
+                        Match Review's candidates — see
+                        SharedResources.xaml's WrappingDualLineNameTemplate.
+                    -->
+                    <Grid Padding="4" RowSpacing="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="110" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Item.TransactionDateDisplay}" />
+                            <TextBlock
+                                Grid.Column="2"
+                                HorizontalAlignment="Right"
+                                Text="{Binding Item.DepositDisplay}" />
+                            <TextBlock
+                                Grid.Column="3"
+                                HorizontalAlignment="Right"
+                                Text="{Binding Item.PaymentDisplay}" />
+                        </Grid>
+
+                        <ContentControl
+                            Grid.Row="1"
+                            HorizontalContentAlignment="Stretch"
+                            Content="{Binding Item}"
+                            ContentTemplate="{StaticResource WrappingDualLineNameTemplate}" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

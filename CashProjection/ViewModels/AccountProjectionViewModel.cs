@@ -14,7 +14,6 @@ using Microsoft.UI.Xaml.Media;
 using CashProjection.Models;
 using CashProjection.Data.Repositories;
 using CashProjection.Services;
-using CashProjection.Services.Dialogs;
 
 namespace CashProjection.ViewModels
 {
@@ -29,7 +28,6 @@ namespace CashProjection.ViewModels
         private readonly MatchRepository _matchRepo;
         private readonly AppSettingsRepository _settingsRepo;
         private readonly ChangeHistoryService _changeHistory;
-        private readonly IDialogService _dialogService;
         private readonly Account _account;
         private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -58,7 +56,6 @@ namespace CashProjection.ViewModels
             MatchRepository matchRepo,
             AppSettingsRepository settingsRepo,
             ChangeHistoryService changeHistory,
-            IDialogService dialogService,
             StatusBarViewModel? statusVM = null)
         {
             _statusVM = statusVM;
@@ -68,7 +65,6 @@ namespace CashProjection.ViewModels
             _matchRepo = matchRepo;
             _settingsRepo = settingsRepo;
             _changeHistory = changeHistory;
-            _dialogService = dialogService;
 
             _account = account;
 
@@ -281,40 +277,37 @@ namespace CashProjection.ViewModels
             _statusVM?.Report($"Saved '{after.Name}'.", busy: false, StatusSeverity.Info);
         }
 
+        // Actually removes the projection item — no confirmation here.
+        // Used to go through IDialogService.ConfirmAsync (a second
+        // ContentDialog) directly from this method, but nesting one
+        // ContentDialog inside another — the editor popover's Delete
+        // button triggering a confirm dialog while the popover was still
+        // open — proved unreliable in practice across several different
+        // failure modes (XamlRoot not resolving, a button-click deferral
+        // already completed), all confirmed via the app's own crash log
+        // rather than guessed. The editor popover now confirms in-place
+        // inline instead (ProjectionItemEditorViewModel.IsConfirmingDelete)
+        // and calls straight through to this once the user's confirmed.
         [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
-        public async Task DeleteTransaction(ProjectionItemViewModel? transaction)
+        public void DeleteTransactionConfirmed(ProjectionItemViewModel? transaction)
         {
             if (transaction == null)
                 return;
 
-            string amountText = transaction.Deposit.HasValue
-                ? $"deposit of {transaction.Deposit:C}"
-                : transaction.Payment.HasValue
-                    ? $"payment of {transaction.Payment:C}"
-                    : "amount of $0";
+            var before = transaction.ToModel();
+            _itemRepo.Delete(transaction.Id);
+            _changeHistory.Record(_account.Id, ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Deleted, before, after: null, $"Deleted '{transaction.Name}'");
+            _redoStack.Clear();
 
-            var confirmed = await _dialogService.ConfirmAsync(
-                $"Are you sure you want to delete '{transaction.Name}' {amountText} on {transaction.TransactionDate:d}?",
-                "Confirm Delete");
+            _transactions.Remove(transaction);
 
-            if (confirmed)
-            {
-                var before = transaction.ToModel();
-                _itemRepo.Delete(transaction.Id);
-                _changeHistory.Record(_account.Id, ChangeEntityType.ProjectionItem, transaction.Id, ChangeType.Deleted, before, after: null, $"Deleted '{transaction.Name}'");
-                _redoStack.Clear();
-
-                _transactions.Remove(transaction);
-
-                // Don't rely on the grid's own SelectedItem-on-removal
-                // fixup running before the editor popover's RequestClose
-                // handler reads SelectedTransaction right after this —
-                // clear it explicitly so that handler's "fall back to
-                // today's row" logic doesn't try to re-focus a row that no
-                // longer exists.
-                if (ReferenceEquals(SelectedTransaction, transaction))
-                    SelectedTransaction = null;
-            }
+            // Don't rely on the grid's own SelectedItem-on-removal fixup
+            // running before the editor popover's RequestClose handler
+            // reads SelectedTransaction right after this — clear it
+            // explicitly so that handler's "fall back to today's row"
+            // logic doesn't try to re-focus a row that no longer exists.
+            if (ReferenceEquals(SelectedTransaction, transaction))
+                SelectedTransaction = null;
         }
 
         // Called after any popover closes (Save/OK/Cancel/Escape alike) so

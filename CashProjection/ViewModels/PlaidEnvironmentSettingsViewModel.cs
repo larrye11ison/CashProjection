@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using CashProjection.Services.Dialogs;
 using CashProjection.Services.Plaid;
 using CashProjection.Services.Secrets;
 
@@ -11,7 +10,6 @@ namespace CashProjection.ViewModels
         private readonly PlaidSettingsService _settings;
         private readonly SecretStoreFactory _secretStores;
         private readonly PlaidLinkService _linkService;
-        private readonly IDialogService _dialogService;
 
         [ObservableProperty]
         private PlaidEnvironmentOption _currentEnvironment;
@@ -33,14 +31,23 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private string _statusMessage = string.Empty;
 
+        // Switching to Production confirms in-place (an overlay within this
+        // same dialog) rather than via a second ContentDialog — see
+        // ChangeHistoryViewModel's comment on PendingRollbackEntry for why.
+        [ObservableProperty]
+        private bool _isConfirmingSwitchToProduction;
+
+        public string SwitchToProductionConfirmationMessage => HasStoredProductionAccessToken
+            ? "Switch to Production using your already-connected bank account? No new Link will be performed."
+            : "This will require a REAL bank Link the next time the app starts — a real connection to your actual bank account. Continue?";
+
         public event Action? RequestClose;
 
-        public PlaidEnvironmentSettingsViewModel(PlaidSettingsService settings, SecretStoreFactory secretStores, PlaidLinkService linkService, IDialogService dialogService)
+        public PlaidEnvironmentSettingsViewModel(PlaidSettingsService settings, SecretStoreFactory secretStores, PlaidLinkService linkService)
         {
             _settings = settings;
             _secretStores = secretStores;
             _linkService = linkService;
-            _dialogService = dialogService;
 
             CurrentEnvironment = _settings.GetEnvironment();
             HasStoredProductionAccessToken = _linkService.HasStoredAccessToken(PlaidEnvironmentOption.Production);
@@ -71,7 +78,7 @@ namespace CashProjection.ViewModels
         }
 
         [RelayCommand]
-        public async Task SwitchToProduction()
+        public void RequestSwitchToProduction()
         {
             var credStore = _secretStores.GetCredentialStore(PlaidEnvironmentOption.Production);
             var hasClientId = credStore.Get(PlaidClientFactory.ClientIdKey(PlaidEnvironmentOption.Production)) is not null;
@@ -82,14 +89,16 @@ namespace CashProjection.ViewModels
                 return;
             }
 
-            var confirmMessage = HasStoredProductionAccessToken
-                ? "Switch to Production using your already-connected bank account? No new Link will be performed."
-                : "This will require a REAL bank Link the next time the app starts — a real connection to your actual " +
-                  "bank account. Continue?";
+            IsConfirmingSwitchToProduction = true;
+        }
 
-            var confirmed = await _dialogService.ConfirmAsync(confirmMessage, "Switch to Production");
-            if (!confirmed)
-                return;
+        [RelayCommand]
+        public void CancelSwitchToProduction() => IsConfirmingSwitchToProduction = false;
+
+        [RelayCommand]
+        public void ConfirmSwitchToProduction()
+        {
+            IsConfirmingSwitchToProduction = false;
 
             _settings.SetEnvironment(PlaidEnvironmentOption.Production);
             CurrentEnvironment = PlaidEnvironmentOption.Production;

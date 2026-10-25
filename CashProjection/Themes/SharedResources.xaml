@@ -14,14 +14,16 @@
     -->
     <models:BoolToVisibilityConverter x:Key="BoolToVis" />
     <models:NullableDecimalToStringConverter x:Key="NullableDecimalToString" />
+    <models:StringToVisibilityConverter x:Key="StringToVis" />
 
     <!--
-        The ONE place controlling how every list in the app (the checking
-        grid, other-account transactions, Match Review's candidates,
-        Find's results) shows a real bank row's vendor name vs. the bank's
-        own raw description — primary line on top, secondary line below
-        only when it's actually set and differs from the primary. A plain
-        runtime {Binding} (not {x:Bind}) deliberately, so this one template
+        The ONE place controlling how the main grid shows a real bank row's
+        vendor name vs. the bank's own raw description — primary line on
+        top, secondary line below only when it's actually set and differs
+        from the primary. Truncates (CharacterEllipsis) rather than wraps,
+        deliberately: the DataGrid's rows have a fixed height, and wrapped
+        text there would grow a row out of alignment with every other row.
+        A plain runtime {Binding} (not {x:Bind}), so this one template
         works unmodified against every type that exposes PrimaryDisplayName/
         SecondaryDisplayText/HasDistinctSecondaryText, whatever its concrete
         type actually is.
@@ -34,6 +36,25 @@
                 Opacity="0.65"
                 Text="{Binding SecondaryDisplayText}"
                 TextTrimming="CharacterEllipsis"
+                Visibility="{Binding HasDistinctSecondaryText, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
+    </DataTemplate>
+
+    <!--
+        The popover equivalent of DualLineNameTemplate above — same two
+        lines, same binding shape, but used wherever a row ISN'T a
+        fixed-height DataGrid row (Find's results, Match Review's
+        candidates), so there's no reason to ever truncate a vendor name or
+        description: it wraps and the row simply grows to fit instead.
+    -->
+    <DataTemplate x:Key="WrappingDualLineNameTemplate">
+        <StackPanel>
+            <TextBlock Text="{Binding PrimaryDisplayName}" TextWrapping="Wrap" />
+            <TextBlock
+                FontSize="11"
+                Opacity="0.65"
+                Text="{Binding SecondaryDisplayText}"
+                TextWrapping="Wrap"
                 Visibility="{Binding HasDistinctSecondaryText, Converter={StaticResource BoolToVis}}" />
         </StackPanel>
     </DataTemplate>

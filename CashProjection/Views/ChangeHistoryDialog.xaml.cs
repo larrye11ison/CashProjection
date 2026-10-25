@@ -22,10 +22,14 @@ namespace CashProjection.Views
                 ViewModel.UndoCommand.Execute(entry);
         }
 
-        private async void RollbackButton_Click(object sender, RoutedEventArgs e)
+        // Rollback confirms in-place within this same dialog now — see
+        // ChangeHistoryViewModel's comment on PendingRollbackEntry — so
+        // this just arms that overlay rather than awaiting a second
+        // ContentDialog.
+        private void RollbackButton_Click(object sender, RoutedEventArgs e)
         {
             if ((sender as Button)?.Tag is ChangeHistoryEntry entry)
-                await ViewModel.RollbackToHereCommand.ExecuteAsync(entry);
+                ViewModel.RequestRollbackCommand.Execute(entry);
         }
     }
 }

@@ -12,7 +12,6 @@ using Windows.System;
 using CashProjection.Data.Repositories;
 using CashProjection.Models;
 using CashProjection.Services;
-using CashProjection.Services.Dialogs;
 using CashProjection.Services.Matching;
 using CashProjection.Services.Plaid;
 using CashProjection.Services.Secrets;
@@ -33,7 +32,6 @@ namespace CashProjection.ViewModels
         private readonly PlaidSettingsService _plaidSettings;
         private readonly SecretStoreFactory _secretStores;
         private readonly UnseenTransactionsTracker _unseenTracker;
-        private readonly IDialogService _dialogService;
         private readonly Func<Account, AccountProjectionViewModel> _accountVMFactory;
         private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         private readonly DispatcherTimer _syncTimer;
@@ -109,8 +107,7 @@ namespace CashProjection.ViewModels
             AccountRepository accountRepo,
             PlaidSettingsService plaidSettings,
             SecretStoreFactory secretStores,
-            UnseenTransactionsTracker unseenTracker,
-            IDialogService dialogService)
+            UnseenTransactionsTracker unseenTracker)
         {
             StatusVM = statusVM;
             _accountVMFactory = accountVMFactory;
@@ -125,7 +122,6 @@ namespace CashProjection.ViewModels
             _syncService = syncService;
             _accountRepo = accountRepo;
             _unseenTracker = unseenTracker;
-            _dialogService = dialogService;
             SearchResults = new ObservableCollection<SearchResult>();
 
             // Guarantees at least one Account row exists — previously this
@@ -384,7 +380,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenHistory()
         {
-            var vm = new ChangeHistoryViewModel(_changeHistory, _dialogService, AccountVM.AccountId, AccountVM.ReloadTransactionsFromDatabase);
+            var vm = new ChangeHistoryViewModel(_changeHistory, AccountVM.AccountId, AccountVM.ReloadTransactionsFromDatabase);
             vm.RequestClose += () =>
             {
                 IsChangeHistoryOpen = false;
@@ -398,7 +394,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenPlaidSettings()
         {
-            var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService, _dialogService);
+            var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService);
             vm.RequestClose += () =>
             {
                 IsPlaidSettingsOpen = false;

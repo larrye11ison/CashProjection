@@ -16,6 +16,14 @@ namespace CashProjection.Views
             if (vm.IsExisting)
                 SecondaryButtonText = "Delete";
 
+            // These four fields are read/written imperatively rather than
+            // via x:Bind (see the XAML's comment on NameBox for why) — set
+            // their initial text here from the ViewModel's current values.
+            NameBox.Text = vm.NameInput;
+            DepositBox.Text = vm.DepositInput;
+            PaymentBox.Text = vm.PaymentInput;
+            MatchTextBox.Text = vm.Scratch.MatchText ?? string.Empty;
+
             // Every closing path (Save, Cancel, or a confirmed Delete) goes
             // through RequestClose — ShellViewModel is already subscribed
             // to it to tear down IsEditorOpen/EditorVM and restore grid
@@ -23,29 +31,25 @@ namespace CashProjection.Views
             ViewModel.RequestClose += Hide;
         }
 
+        private void NameBox_TextChanged(object sender, TextChangedEventArgs e) => ViewModel.NameInput = NameBox.Text;
+
+        private void DepositBox_TextChanged(object sender, TextChangedEventArgs e) => ViewModel.DepositInput = DepositBox.Text;
+
+        private void PaymentBox_TextChanged(object sender, TextChangedEventArgs e) => ViewModel.PaymentInput = PaymentBox.Text;
+
         private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
             args.Cancel = true;
 
-            // x:Bind TwoWay on a TextBox's Text only pushes to the
-            // ViewModel on LostFocus — a mouse click on this button already
-            // blurs whatever TextBox had focus before PrimaryButtonClick
-            // fires, but DefaultButton="Primary" invoking this same click
-            // via Enter does NOT (and shuffling focus to a non-Control
-            // panel to force it turned out unreliable), so Save would
-            // otherwise read stale Scratch data for whichever field the
-            // user was still editing. Reading every TextBox directly here
-            // sidesteps the LostFocus dependency entirely.
-            ViewModel.Scratch.Name = NameBox.Text;
-            ViewModel.Scratch.Deposit = ParseNullableDecimal(DepositBox.Text);
-            ViewModel.Scratch.Payment = ParseNullableDecimal(PaymentBox.Text);
+            // Name/Date/Deposit/Payment are already live on the ViewModel
+            // via the TextChanged handlers above (and CalendarDatePicker's
+            // own immediate TwoWay push) — only MatchText still needs to be
+            // read directly here, since it has no validation and so never
+            // needed a dedicated tracked property.
             ViewModel.Scratch.MatchText = MatchTextBox.Text;
 
             ViewModel.SaveCommand.Execute(null);
         }
-
-        private static decimal? ParseNullableDecimal(string text) =>
-            decimal.TryParse(text, out var d) ? d : null;
 
         private void ContentDialog_CloseButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
@@ -53,22 +57,15 @@ namespace CashProjection.Views
             ViewModel.CancelCommand.Execute(null);
         }
 
-        // Deferred: Delete asks for confirmation (IDialogService, itself
-        // async) before actually removing anything — the dialog must stay
-        // open until that's resolved, and only close if the user actually
-        // confirmed (ViewModel.Delete only raises RequestClose then).
-        private async void ContentDialog_SecondaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        // Delete confirms in-place (ViewModel.IsConfirmingDelete swaps the
+        // dialog's own content — see the XAML) rather than opening a
+        // second ContentDialog on top of this one, which proved
+        // unreliable across several different WinUI failure modes
+        // (confirmed via the app's own crash log each time, not guessed).
+        private void ContentDialog_SecondaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
             args.Cancel = true;
-            var deferral = args.GetDeferral();
-            try
-            {
-                await ViewModel.DeleteCommand.ExecuteAsync(null);
-            }
-            finally
-            {
-                deferral.Complete();
-            }
+            ViewModel.RequestDeleteCommand.Execute(null);
         }
     }
 }

@@ -31,6 +31,17 @@ namespace CashProjection.Models
         }
     }
 
+    // Shows a validation-error TextBlock only when there's actually an
+    // error message to display.
+    public class StringToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language) =>
+            value is string s && !string.IsNullOrEmpty(s) ? Visibility.Visible : Visibility.Collapsed;
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+            throw new NotImplementedException();
+    }
+
     // WinUI's Binding has no automatic string<->decimal? conversion for
     // TextBox.Text the way WPF's did — this is the editor popover's bridge
     // for the Deposit/Payment fields.

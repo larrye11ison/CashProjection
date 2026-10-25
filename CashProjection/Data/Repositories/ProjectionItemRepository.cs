@@ -81,10 +81,23 @@ namespace CashProjection.Data.Repositories
             cmd.ExecuteNonQuery();
         }
 
+        // Matches.ProjectionItemId REFERENCES ProjectionItems(Id) with FK
+        // enforcement on (CashProjectionDbContext sets PRAGMA foreign_keys
+        // = ON) and no ON DELETE CASCADE — deleting an item that has ANY
+        // Match row against it (presumptive, confirmed, or rejected; the
+        // fuzzy-matching engine creates these automatically, so most items
+        // have at least one) fails with "FOREIGN KEY constraint failed"
+        // unless those rows go first. Known tradeoff: undoing this delete
+        // (ChangeHistoryService restores the projection item itself) does
+        // NOT restore whatever match relationships it had — only the item
+        // is snapshotted for Undo, not its Matches rows.
         public void Delete(int id)
         {
             using var cmd = _db.Connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM ProjectionItems WHERE Id = $id;";
+            cmd.CommandText = """
+                DELETE FROM Matches WHERE ProjectionItemId = $id;
+                DELETE FROM ProjectionItems WHERE Id = $id;
+                """;
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
         }

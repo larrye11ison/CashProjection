@@ -5,68 +5,96 @@
     Title="Plaid Environment Settings"
     CloseButtonText="Close">
 
-    <ScrollViewer Width="520" MaxHeight="560">
-        <StackPanel Spacing="16">
+    <Grid>
+        <ScrollViewer Width="520" MaxHeight="560">
+            <StackPanel Spacing="16">
+                <Border
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                    <StackPanel Spacing="8">
+                        <TextBlock FontSize="16" FontWeight="Bold" Text="Current environment" />
+                        <TextBlock
+                            FontSize="20"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            Text="{x:Bind ViewModel.CurrentEnvironment, Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.HasStoredProductionAccessTokenDisplay, Mode=OneWay}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                    <StackPanel Spacing="8">
+                        <TextBlock FontSize="16" FontWeight="Bold" Text="Production credentials" />
+                        <TextBlock
+                            Opacity="0.7"
+                            Text="From the Plaid Dashboard (Production, not Sandbox). Stored directly in Windows Credential Manager — never written to any file."
+                            TextWrapping="Wrap" />
+
+                        <TextBox PlaceholderText="Production client_id" Text="{x:Bind ViewModel.ProductionClientId, Mode=TwoWay}" />
+
+                        <PasswordBox
+                            x:Name="SecretPasswordBox"
+                            PasswordChanged="SecretPasswordBox_PasswordChanged"
+                            PlaceholderText="Production secret (leave blank to keep the stored one)" />
+
+                        <Button Click="SaveCredentialsButton_Click" Content="Save Credentials" />
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                    <StackPanel Spacing="8">
+                        <TextBlock FontSize="16" FontWeight="Bold" Text="Switch environment" />
+                        <TextBlock
+                            Opacity="0.7"
+                            Text="Switching requires restarting the app to take effect. Flipping back to Sandbox never deletes a stored Production connection."
+                            TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Command="{x:Bind ViewModel.SwitchToSandboxCommand}" Content="Switch to Sandbox" />
+                            <Button Command="{x:Bind ViewModel.RequestSwitchToProductionCommand}" Content="Switch to Production" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock FontWeight="Bold" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!--
+            Switching to Production confirms in-place via this overlay
+            rather than a second ContentDialog — see
+            ChangeHistoryViewModel's comment on PendingRollbackEntry for
+            why.
+        -->
+        <Border
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsConfirmingSwitchToProduction, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <Border
-                Padding="16"
+                Width="420"
+                Padding="20"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="4">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="16" FontWeight="Bold" Text="Current environment" />
-                    <TextBlock
-                        FontSize="20"
-                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                        Text="{x:Bind ViewModel.CurrentEnvironment, Mode=OneWay}" />
-                    <TextBlock Text="{x:Bind ViewModel.HasStoredProductionAccessTokenDisplay, Mode=OneWay}" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
-
-            <Border
-                Padding="16"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="4">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="16" FontWeight="Bold" Text="Production credentials" />
-                    <TextBlock
-                        Opacity="0.7"
-                        Text="From the Plaid Dashboard (Production, not Sandbox). Stored directly in Windows Credential Manager — never written to any file."
-                        TextWrapping="Wrap" />
-
-                    <TextBox PlaceholderText="Production client_id" Text="{x:Bind ViewModel.ProductionClientId, Mode=TwoWay}" />
-
-                    <PasswordBox
-                        x:Name="SecretPasswordBox"
-                        PasswordChanged="SecretPasswordBox_PasswordChanged"
-                        PlaceholderText="Production secret (leave blank to keep the stored one)" />
-
-                    <Button Click="SaveCredentialsButton_Click" Content="Save Credentials" />
-                </StackPanel>
-            </Border>
-
-            <Border
-                Padding="16"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="4">
-                <StackPanel Spacing="8">
-                    <TextBlock FontSize="16" FontWeight="Bold" Text="Switch environment" />
-                    <TextBlock
-                        Opacity="0.7"
-                        Text="Switching requires restarting the app to take effect. Flipping back to Sandbox never deletes a stored Production connection."
-                        TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Command="{x:Bind ViewModel.SwitchToSandboxCommand}" Content="Switch to Sandbox" />
-                        <Button Command="{x:Bind ViewModel.SwitchToProductionCommand}" Content="Switch to Production" />
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{x:Bind ViewModel.SwitchToProductionConfirmationMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Button Command="{x:Bind ViewModel.CancelSwitchToProductionCommand}" Content="Cancel" />
+                        <Button Command="{x:Bind ViewModel.ConfirmSwitchToProductionCommand}" Content="Switch to Production" Style="{StaticResource AccentButtonStyle}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
-
-            <TextBlock FontWeight="Bold" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
-        </StackPanel>
-    </ScrollViewer>
+        </Border>
+    </Grid>
 </ContentDialog>
