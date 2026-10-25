@@ -8,13 +8,13 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
 
 ## Features
 
-### ?? Cash Flow Management
+### 💰 Cash Flow Management
 - Track deposits and payments with automatic balance calculation
 - Support for recurring transactions (Monthly, Quarterly, Semi-Annually, Annually)
 - Special "Two Weeks Past Last" periodicity for cases where you're paid every two weeks
 - Visual warning indicators for low and critically low projected balances
 
-### ?? Smart Visualization
+### 📊 Smart Visualization
 - Row highlighting for two specific warnings: an unmatched projection overdue past its date, and "pending" bank activity (already reflected in your live balance but not yet posted as a transaction)
 - A dedicated Flags column: a calendar icon marks projection items (vs. real bank transactions), plus icons for the lowest near-term balance, a matched/linked transaction, and an amount-drift warning
 - The Balance column highlights just the one cell — not the whole row — when that row's balance crosses a caution/critical threshold, so it's unambiguous which number is driving the warning
@@ -22,7 +22,7 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
 - Future transactions displayed with reduced opacity
 - Running balance calculation across all transactions
 
-### ? Productivity Features
+### ⚡ Productivity Features
 - **Keyboard Shortcuts**:
   - `Ctrl+F` - Find transactions
   - `F2` - Edit the selected projection item
@@ -36,7 +36,7 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
   - Correct Balance: manually override a real transaction's reported/estimated balance
 - **Smart Search**: Find transactions by name with instant results and keyboard navigation, newest first
 
-### ?? Data Management
+### 🗄️ Data Management
 - Local SQLite database, stored in OneDrive (with fallback to Documents folder)
 - Every add/edit/delete/push-forward writes through immediately — there's no separate save step or pending-changes state
 
@@ -137,4 +137,4 @@ Project Link: [https://github.com/larrye11ison/CashProjection](https://github.co
 
 ---
 
-? If you find this project useful, please consider giving it a star on GitHub!
+⭐ If you find this project useful, please consider giving it a star on GitHub!
