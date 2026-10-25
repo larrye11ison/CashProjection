@@ -40,16 +40,35 @@ namespace CashProjection
             var environment = settings.GetEnvironment();
             if (!linkService.HasStoredAccessToken(environment))
             {
-                var linkVm = _serviceProvider.GetRequiredService<PlaidLinkViewModel>();
-                var linkWindow = new PlaidLinkWindow(linkVm);
-                await linkWindow.ShowAndWaitAsync();
+                // Offer Import before ever touching PlaidLinkWindow (and the
+                // WebView2 control it depends on) — running Link
+                // unconditionally here is exactly the new-Item-slot-burning
+                // problem issue #4's export/import exists to avoid, and
+                // would make Import unreachable on a second machine that
+                // already has an exported connection waiting.
+                var firstLaunchVm = _serviceProvider.GetRequiredService<PlaidFirstLaunchViewModel>();
+                var firstLaunchWindow = new PlaidFirstLaunchWindow(firstLaunchVm);
+                await firstLaunchWindow.ShowAndWaitAsync();
 
-                if (!linkVm.Succeeded)
+                if (firstLaunchVm.UserChoseConnectNew)
                 {
-                    // Connecting a bank account is mandatory for this app —
-                    // there's nothing useful to show without it. Unlike WPF,
-                    // WinUI doesn't exit the process just because a window
-                    // closed, so this has to be explicit.
+                    var linkVm = _serviceProvider.GetRequiredService<PlaidLinkViewModel>();
+                    var linkWindow = new PlaidLinkWindow(linkVm);
+                    await linkWindow.ShowAndWaitAsync();
+
+                    if (!linkVm.Succeeded)
+                    {
+                        // Connecting a bank account is mandatory for this app —
+                        // there's nothing useful to show without it. Unlike WPF,
+                        // WinUI doesn't exit the process just because a window
+                        // closed, so this has to be explicit.
+                        Exit();
+                        return;
+                    }
+                }
+                else if (!firstLaunchVm.ImportSucceeded)
+                {
+                    // User closed the window without choosing either path.
                     Exit();
                     return;
                 }
@@ -78,9 +97,20 @@ namespace CashProjection
         {
             try
             {
+                // XamlParseException's own Message is a hardcoded "XAML
+                // parsing failed." regardless of cause — but the real
+                // native HRESULT that triggered it survives in HResult
+                // (set by WinRT.ExceptionHelpers.ThrowExceptionForHR), and
+                // e.Message is a separate field the runtime sometimes
+                // populates with more detail than Exception.Message. Plain
+                // ToString() surfaces neither, so both are appended here.
+                var details = $"{e.Exception}\n\n" +
+                    $"HResult: 0x{e.Exception.HResult:X8}\n" +
+                    $"UnhandledExceptionEventArgs.Message: {e.Message}";
+
                 System.IO.File.WriteAllText(
                     System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cp_crash.txt"),
-                    e.Exception.ToString());
+                    details);
             }
             catch { /* best-effort diagnostic only */ }
 
@@ -121,6 +151,7 @@ namespace CashProjection
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<ShellView>();
             services.AddTransient<PlaidLinkViewModel>();
+            services.AddTransient<PlaidFirstLaunchViewModel>();
         }
     }
 }

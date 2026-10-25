@@ -58,6 +58,7 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
 - Windows 10/11
 - .NET 10.0 SDK or later
 - Visual Studio 2022 (recommended) or VS Code with C# extension
+- [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) — the bank-Link flow renders Plaid's Hosted Link page in a WebView2 control, which needs this installed separately from .NET/WinUI. Most Windows 10/11 machines already have it (it ships with Edge), but it isn't guaranteed — if missing, the app crashes immediately on first launch with a bare `XamlParseException` and no useful message, out of `PlaidLinkWindow.InitializeComponent()`
 - A [Plaid](https://plaid.com) developer account ([sign up free](https://dashboard.plaid.com/signup)) with a Sandbox `client_id` and `secret` — the app cannot connect to any bank account, real or test, without these
 
 ### Installation
@@ -90,9 +91,18 @@ Before the app can show anything, it needs your own Plaid `client_id`/`secret` �
      "SandboxSecret": "your-sandbox-secret"
    }
    ```
-3. Launch the app. You'll be walked through connecting a (Sandbox, by default) bank account via Plaid Link — this is how the account balance and transactions get in.
+3. Launch the app. If you've already connected a bank account on another machine, choose **Import an existing connection…** here and supply the file + passphrase from that machine's Plaid Settings export (see below) — otherwise choose **Connect a new bank account…** to walk through Plaid Link, which is how the account balance and transactions get in.
 
 To use the app against your *real* bank account instead of Sandbox test data, switch environments from the app's Plaid Settings: enter a Production `client_id`/`secret` there (stored in Windows Credential Manager, not a file) and switch to Production — this performs a real Plaid Link against your actual bank.
+
+### Moving to Another Machine
+
+Plaid Link always creates a brand-new Item, and free developer accounts only get a limited number of Item slots — so to reuse the same connection on a second machine (e.g. for disaster recovery) instead of burning another slot, export it from the first machine and import it on the second:
+
+- On the original machine, open **Plaid Settings** and click **Export Connection…** under "Move to another machine." Pick a passphrase and a save location — the file is encrypted (AES-256-GCM, PBKDF2-derived key) and harmless to store anywhere, even in the OneDrive-synced folder, since it's useless without the passphrase.
+- On the second machine, either import it from the first-launch screen (above) or, if you already connected a different way, from **Plaid Settings → Import Connection…**.
+
+The app has no protection against two machines running concurrently against the same OneDrive-synced SQLite database — fully close the app on one machine, let OneDrive finish syncing, and only then open it on the other.
 
 Once connected, you can add, modify, or delete recurring projection items — each change is written to the database as soon as you make it.
 
