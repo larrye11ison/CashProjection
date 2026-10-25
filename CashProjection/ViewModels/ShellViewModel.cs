@@ -27,6 +27,7 @@ namespace CashProjection.ViewModels
         private readonly BankTransactionRepository _bankRepo;
         private readonly FuzzyMatchingService _matchingService;
         private readonly PlaidLinkService _linkService;
+        private readonly PlaidConnectionTransferService _transferService;
         private readonly PlaidSyncService _syncService;
         private readonly AccountRepository _accountRepo;
         private readonly PlaidSettingsService _plaidSettings;
@@ -103,6 +104,7 @@ namespace CashProjection.ViewModels
             BankTransactionRepository bankRepo,
             FuzzyMatchingService matchingService,
             PlaidLinkService linkService,
+            PlaidConnectionTransferService transferService,
             PlaidSyncService syncService,
             AccountRepository accountRepo,
             PlaidSettingsService plaidSettings,
@@ -119,6 +121,7 @@ namespace CashProjection.ViewModels
             _plaidSettings = plaidSettings;
             _secretStores = secretStores;
             _linkService = linkService;
+            _transferService = transferService;
             _syncService = syncService;
             _accountRepo = accountRepo;
             _unseenTracker = unseenTracker;
@@ -394,7 +397,7 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void OpenPlaidSettings()
         {
-            var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService);
+            var vm = new PlaidEnvironmentSettingsViewModel(_plaidSettings, _secretStores, _linkService, _transferService);
             vm.RequestClose += () =>
             {
                 IsPlaidSettingsOpen = false;

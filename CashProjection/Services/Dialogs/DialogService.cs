@@ -11,6 +11,11 @@ namespace CashProjection.Services.Dialogs
     public static class DialogHost
     {
         public static XamlRoot? Root { get; set; }
+
+        // WinRT file pickers (used for exporting/importing the Plaid
+        // connection) need a real HWND to anchor to — a XamlRoot alone
+        // isn't enough — so the main window itself is tracked here too.
+        public static Window? MainWindow { get; set; }
     }
 
     public sealed class DialogService : IDialogService

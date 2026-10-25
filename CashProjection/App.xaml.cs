@@ -101,6 +101,7 @@ namespace CashProjection
             services.AddSingleton<SecretStoreFactory>();
             services.AddSingleton<PlaidClientFactory>();
             services.AddSingleton<PlaidLinkService>();
+            services.AddSingleton<PlaidConnectionTransferService>();
             services.AddSingleton<PlaidSyncService>();
             services.AddSingleton<UnseenTransactionsTracker>();
             services.AddSingleton<FuzzyMatchingService>();

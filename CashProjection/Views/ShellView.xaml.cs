@@ -17,6 +17,8 @@ namespace CashProjection.Views
             ViewModel = vm;
             InitializeComponent();
 
+            DialogHost.MainWindow = this;
+
             Title = "Cash Projection";
             WindowBackdropHelper.ApplyMica(this);
             WindowIconHelper.SetIcon(this, "Assets\\AppIcon.ico");
