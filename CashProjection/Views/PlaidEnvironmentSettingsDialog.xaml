@@ -6,7 +6,27 @@
     CloseButtonText="Close">
 
     <Grid>
-        <ScrollViewer Width="520" MaxHeight="560">
+        <!--
+            No explicit MaxHeight here — ContentDialog's own template
+            already caps content to the window's available height, so
+            removing our old hardcoded 560px lets this use whatever room
+            actually exists instead of clipping early on tall content.
+
+            WinUI's ScrollViewer can't be made to show a reliable native
+            scrollbar: every part of it (thumb, track, buttons) renders at
+            Opacity="0" by default in Microsoft's own control template
+            (DefaultScrollViewerStyle in generic.xaml), and only lights up
+            via an internal VisualStateGroup driven by the WinAppSDK
+            runtime's own pointer-device detection — not by any exposed
+            property. VerticalScrollBarVisibility="Visible" is literally
+            already that style's default value, so setting it is a no-op.
+            Hence MoreContentHint below instead of fighting the control.
+        -->
+        <ScrollViewer
+            x:Name="ContentScrollViewer"
+            Width="520"
+            Padding="0,0,16,0"
+            ViewChanged="ContentScrollViewer_ViewChanged">
             <StackPanel Spacing="16">
                 <Border
                     Padding="16"
@@ -67,9 +87,57 @@
                     </StackPanel>
                 </Border>
 
+                <Border
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                    <StackPanel Spacing="8">
+                        <TextBlock FontSize="16" FontWeight="Bold" Text="Move to another machine" />
+                        <TextBlock
+                            Opacity="0.7"
+                            Text="Moves the SAME Plaid Item between machines instead of burning a new one. Export encrypts the current environment's connection to a file; Import decrypts it back into Windows Credential Manager on this machine. Never run two machines against the same OneDrive-synced database at the same time — fully close on one, let OneDrive finish syncing, then open on the other."
+                            TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                Click="ExportConnectionButton_Click"
+                                Content="Export Connection…"
+                                IsEnabled="{x:Bind ViewModel.CanExportCurrentEnvironmentConnection, Mode=OneWay}" />
+                            <Button Click="ImportConnectionButton_Click" Content="Import Connection…" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <TextBlock FontWeight="Bold" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
+
+        <!--
+            Stands in for the native scrollbar, which WinUI never reliably
+            shows here (see the ScrollViewer comment above) — not a
+            reliable enough cue, on its own, that this dialog has content
+            below the fold (unlike e.g. a DataGrid, where a cut-off row
+            makes it obvious). This pill only shows while
+            ContentScrollViewer actually has unseen content below the
+            current scroll position — see ContentScrollViewer_ViewChanged
+            in the code-behind.
+        -->
+        <Border
+            x:Name="MoreContentHint"
+            Margin="0,0,0,8"
+            Padding="10,4"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource AccentFillColorDefaultBrush}"
+            CornerRadius="12"
+            IsHitTestVisible="False"
+            Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Foreground="White" Text="More below" />
+                <TextBlock FontFamily="Segoe Fluent Icons" Foreground="White" Text="&#xE70D;" />
+            </StackPanel>
+        </Border>
 
         <!--
             Switching to Production confirms in-place via this overlay
@@ -83,7 +151,7 @@
             <Border
                 Width="420"
                 Padding="20"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Background="{ThemeResource ContentDialogBackground}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8">
@@ -92,6 +160,89 @@
                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                         <Button Command="{x:Bind ViewModel.CancelSwitchToProductionCommand}" Content="Cancel" />
                         <Button Command="{x:Bind ViewModel.ConfirmSwitchToProductionCommand}" Content="Switch to Production" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Export passphrase prompt -->
+        <Border
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsExportingConnection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Border
+                Width="420"
+                Padding="20"
+                Background="{ThemeResource ContentDialogBackground}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Enter a passphrase to encrypt the exported connection. You'll need this same passphrase to import it on the other machine." TextWrapping="Wrap" />
+                    <PasswordBox
+                        x:Name="ExportPassphraseBox"
+                        PasswordChanged="ExportPassphraseBox_PasswordChanged"
+                        PlaceholderText="Passphrase" />
+                    <TextBlock
+                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                        FontSize="11"
+                        Text="{x:Bind ViewModel.TransferValidationMessage, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind ViewModel.TransferValidationMessage, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Button Command="{x:Bind ViewModel.CancelExportConnectionCommand}" Content="Cancel" />
+                        <Button Click="ExportConnectionContinueButton_Click" Content="Choose File…" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Import passphrase prompt -->
+        <Border
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsImportingConnection, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Border
+                Width="420"
+                Padding="20"
+                Background="{ThemeResource ContentDialogBackground}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Enter the passphrase that was used when this connection was exported." TextWrapping="Wrap" />
+                    <PasswordBox
+                        x:Name="ImportPassphraseBox"
+                        PasswordChanged="ImportPassphraseBox_PasswordChanged"
+                        PlaceholderText="Passphrase" />
+                    <TextBlock
+                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                        FontSize="11"
+                        Text="{x:Bind ViewModel.TransferValidationMessage, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind ViewModel.TransferValidationMessage, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Button Command="{x:Bind ViewModel.CancelImportConnectionCommand}" Content="Cancel" />
+                        <Button Click="ImportConnectionContinueButton_Click" Content="Choose File…" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <!-- Import overwrite confirmation -->
+        <Border
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Visibility="{x:Bind ViewModel.IsConfirmingImportOverwrite, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <Border
+                Width="420"
+                Padding="20"
+                Background="{ThemeResource ContentDialogBackground}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="{x:Bind ViewModel.ImportOverwriteConfirmationMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Button Command="{x:Bind ViewModel.CancelImportOverwriteCommand}" Content="Cancel" />
+                        <Button Command="{x:Bind ViewModel.ConfirmImportOverwriteCommand}" Content="Overwrite" Style="{StaticResource AccentButtonStyle}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
