@@ -13,7 +13,7 @@
             <TextBlock FontSize="20" FontWeight="Bold" Text="Connect Cash Projection to Plaid" TextWrapping="Wrap" />
             <TextBlock
                 Opacity="0.7"
-                Text="If you've already connected a bank account on another machine, import that connection here instead of linking again — Plaid Link always creates a brand-new Item, and free accounts only get a limited number of Item slots."
+                Text="If you've already connected a bank account on another machine, import that connection here instead of linking again — Plaid Link always creates a brand-new Item, and free accounts only get a limited number of Item slots. The exported file includes client credentials too, so nothing else needs setting up separately."
                 TextWrapping="Wrap" />
             <Button Click="ConnectNewButton_Click" Content="Connect a new bank account…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
             <Button Click="ImportButton_Click" Content="Import an existing connection…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />

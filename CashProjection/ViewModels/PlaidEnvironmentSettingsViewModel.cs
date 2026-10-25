@@ -72,8 +72,8 @@ namespace CashProjection.ViewModels
         public bool CanExportCurrentEnvironmentConnection => _transferService.HasConnectionToExport(CurrentEnvironment);
 
         public string ImportOverwriteConfirmationMessage =>
-            $"This will overwrite the existing stored {CurrentEnvironment} connection with the one from the imported file. " +
-            "This cannot be undone. Continue?";
+            $"This will overwrite the existing stored {CurrentEnvironment} connection — including client credentials — " +
+            "with the one from the imported file. This cannot be undone. Continue?";
 
         public event Action? RequestClose;
 
@@ -184,7 +184,8 @@ namespace CashProjection.ViewModels
             try
             {
                 await _transferService.ExportAsync(CurrentEnvironment, TransferPassphrase, filePath);
-                StatusMessage = $"Exported the {CurrentEnvironment} connection. Keep the passphrase safe — it's required to import it.";
+                StatusMessage = $"Exported the {CurrentEnvironment} connection, including client credentials. " +
+                    "Keep the passphrase safe — it's required to import it.";
             }
             catch (Exception ex)
             {
@@ -285,13 +286,25 @@ namespace CashProjection.ViewModels
         private void ApplyImport(PlaidConnectionPayload payload)
         {
             _transferService.ApplyImportedConnection(CurrentEnvironment, payload);
-
-            if (CurrentEnvironment == PlaidEnvironmentOption.Production)
-                HasStoredProductionAccessToken = true;
             OnPropertyChanged(nameof(CanExportCurrentEnvironmentConnection));
 
-            StatusMessage = $"Imported the {CurrentEnvironment} connection. Restart the app to use it — " +
-                "and make sure no other machine is using this same connection at the same time.";
+            if (CurrentEnvironment == PlaidEnvironmentOption.Production)
+            {
+                HasStoredProductionAccessToken = true;
+                ProductionClientId = payload.ClientId;
+                StatusMessage = $"Imported the {CurrentEnvironment} connection, including client credentials. Restart the app to use it — " +
+                    "and make sure no other machine is using this same connection at the same time.";
+            }
+            else
+            {
+                // DevFileSecretStore (plaid.sandbox.secrets.json) rejects
+                // writes by design — see ApplyImportedConnection — so the
+                // exported client_id/secret never actually land anywhere
+                // for Sandbox, unlike Production.
+                StatusMessage = $"Imported the {CurrentEnvironment} connection. Restart the app to use it — " +
+                    "and make sure no other machine is using this same connection at the same time. " +
+                    "Sandbox client credentials still need to be set up manually (plaid.sandbox.secrets.json), since that file is never written by the app.";
+            }
         }
 
         [RelayCommand]

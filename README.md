@@ -99,8 +99,8 @@ To use the app against your *real* bank account instead of Sandbox test data, sw
 
 Plaid Link always creates a brand-new Item, and free developer accounts only get a limited number of Item slots — so to reuse the same connection on a second machine (e.g. for disaster recovery) instead of burning another slot, export it from the first machine and import it on the second:
 
-- On the original machine, open **Plaid Settings** and click **Export Connection…** under "Move to another machine." Pick a passphrase and a save location — the file is encrypted (AES-256-GCM, PBKDF2-derived key) and harmless to store anywhere, even in the OneDrive-synced folder, since it's useless without the passphrase.
-- On the second machine, either import it from the first-launch screen (above) or, if you already connected a different way, from **Plaid Settings → Import Connection…**.
+- On the original machine, open **Plaid Settings** and click **Export Connection…** under "Move to another machine." Pick a passphrase and a save location — the file is encrypted (AES-256-GCM, PBKDF2-derived key) and harmless to store anywhere, even in the OneDrive-synced folder, since it's useless without the passphrase. It includes the access token, item ID, *and* the Plaid `client_id`/`secret` for that environment — everything needed to run on a new machine, not just the bank connection itself.
+- On the second machine, either import it from the first-launch screen (above) or, if you already connected a different way, from **Plaid Settings → Import Connection…**. No separate client credential setup needed for Production — it's all in the one file. (Sandbox is the one exception: its `client_id`/`secret` still have to go into `plaid.sandbox.secrets.json` by hand, same as [First Launch](#first-launch) above, since that file is deliberately never written by the app.)
 
 The app has no protection against two machines running concurrently against the same OneDrive-synced SQLite database — fully close the app on one machine, let OneDrive finish syncing, and only then open it on the other.
 

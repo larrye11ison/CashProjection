@@ -97,7 +97,7 @@
                         <TextBlock FontSize="16" FontWeight="Bold" Text="Move to another machine" />
                         <TextBlock
                             Opacity="0.7"
-                            Text="Moves the SAME Plaid Item between machines instead of burning a new one. Export encrypts the current environment's connection to a file; Import decrypts it back into Windows Credential Manager on this machine. Never run two machines against the same OneDrive-synced database at the same time — fully close on one, let OneDrive finish syncing, then open on the other."
+                            Text="Moves the SAME Plaid Item between machines instead of burning a new one. Export encrypts the current environment's connection — access token, item ID, and client credentials — to a file; Import decrypts it back into Windows Credential Manager on this machine, no separate credential setup needed. Never run two machines against the same OneDrive-synced database at the same time — fully close on one, let OneDrive finish syncing, then open on the other."
                             TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button

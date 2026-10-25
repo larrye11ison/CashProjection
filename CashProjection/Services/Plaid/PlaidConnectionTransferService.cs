@@ -8,7 +8,12 @@ using CashProjection.Services.Secrets;
 
 namespace CashProjection.Services.Plaid
 {
-    public sealed record PlaidConnectionPayload(PlaidEnvironmentOption Environment, string AccessToken, string ItemId);
+    public sealed record PlaidConnectionPayload(
+        PlaidEnvironmentOption Environment,
+        string AccessToken,
+        string ItemId,
+        string ClientId,
+        string Secret);
 
     // Lets a Plaid Item's access_token/item_id move to a second machine
     // without running Link again — which would create a brand-new Item and
@@ -39,7 +44,19 @@ namespace CashProjection.Services.Plaid
                 ?? throw new InvalidOperationException($"No stored {environment} connection to export.");
             var itemId = _secretStores.AccessTokenStore.Get(PlaidLinkService.ItemIdKey(environment)) ?? string.Empty;
 
-            var plaintext = JsonSerializer.SerializeToUtf8Bytes(new PlaidConnectionPayload(environment, accessToken, itemId));
+            // Bundled alongside the access_token rather than left as a
+            // separate per-machine setup step — they end up in the exact
+            // same Credential Manager store either way, so splitting them
+            // across two manual flows only added friction with no real
+            // security benefit.
+            var credStore = _secretStores.GetCredentialStore(environment);
+            var clientId = credStore.Get(PlaidClientFactory.ClientIdKey(environment))
+                ?? throw new InvalidOperationException($"No stored {environment} client_id to export — save Plaid client credentials first.");
+            var secret = credStore.Get(PlaidClientFactory.SecretKey(environment))
+                ?? throw new InvalidOperationException($"No stored {environment} secret to export — save Plaid client credentials first.");
+
+            var plaintext = JsonSerializer.SerializeToUtf8Bytes(
+                new PlaidConnectionPayload(environment, accessToken, itemId, clientId, secret));
 
             var salt = RandomNumberGenerator.GetBytes(SaltSize);
             var nonce = RandomNumberGenerator.GetBytes(NonceSize);
@@ -101,6 +118,18 @@ namespace CashProjection.Services.Plaid
         {
             _secretStores.AccessTokenStore.Set(PlaidLinkService.AccessTokenKey(targetEnvironment), payload.AccessToken);
             _secretStores.AccessTokenStore.Set(PlaidLinkService.ItemIdKey(targetEnvironment), payload.ItemId);
+
+            // Sandbox client_id/secret live in the gitignored, manually-
+            // maintained plaid.sandbox.secrets.json file (DevFileSecretStore),
+            // which deliberately rejects writes — Sandbox is free/throwaway
+            // and meant to be set up by hand per machine, so only
+            // Production credentials get written here.
+            if (targetEnvironment == PlaidEnvironmentOption.Production)
+            {
+                var credStore = _secretStores.GetCredentialStore(targetEnvironment);
+                credStore.Set(PlaidClientFactory.ClientIdKey(targetEnvironment), payload.ClientId);
+                credStore.Set(PlaidClientFactory.SecretKey(targetEnvironment), payload.Secret);
+            }
         }
 
         private static byte[] DeriveKey(string passphrase, byte[] salt) =>
