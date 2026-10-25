@@ -48,7 +48,10 @@
         </StackPanel>
 
         <StackPanel Spacing="4">
-            <TextBox Header="Correct balance" Text="{x:Bind ViewModel.NewBalanceText, Mode=TwoWay}" />
+            <TextBox
+                x:Name="NewBalanceBox"
+                Header="Correct balance"
+                Text="{x:Bind ViewModel.NewBalanceText, Mode=TwoWay}" />
             <TextBlock
                 FontSize="11"
                 Opacity="0.65"

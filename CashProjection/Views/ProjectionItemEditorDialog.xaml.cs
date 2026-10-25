@@ -26,8 +26,26 @@ namespace CashProjection.Views
         private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
             args.Cancel = true;
+
+            // x:Bind TwoWay on a TextBox's Text only pushes to the
+            // ViewModel on LostFocus — a mouse click on this button already
+            // blurs whatever TextBox had focus before PrimaryButtonClick
+            // fires, but DefaultButton="Primary" invoking this same click
+            // via Enter does NOT (and shuffling focus to a non-Control
+            // panel to force it turned out unreliable), so Save would
+            // otherwise read stale Scratch data for whichever field the
+            // user was still editing. Reading every TextBox directly here
+            // sidesteps the LostFocus dependency entirely.
+            ViewModel.Scratch.Name = NameBox.Text;
+            ViewModel.Scratch.Deposit = ParseNullableDecimal(DepositBox.Text);
+            ViewModel.Scratch.Payment = ParseNullableDecimal(PaymentBox.Text);
+            ViewModel.Scratch.MatchText = MatchTextBox.Text;
+
             ViewModel.SaveCommand.Execute(null);
         }
+
+        private static decimal? ParseNullableDecimal(string text) =>
+            decimal.TryParse(text, out var d) ? d : null;
 
         private void ContentDialog_CloseButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
