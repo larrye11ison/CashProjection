@@ -6,6 +6,8 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
 ![WinUI 3](https://img.shields.io/badge/WinUI_3-Windows_App_SDK-0078D4?logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+> **Requires your own [Plaid](https://plaid.com) developer account.** This app connects to a real bank via Plaid, so it needs a Plaid `client_id`/`secret` (a free Sandbox account is enough to try it out) before it will run at all — see [Prerequisites](#prerequisites) and [First Launch](#first-launch) below.
+
 ## Features
 
 ### 💰 Cash Flow Management
@@ -56,6 +58,7 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
 - Windows 10/11
 - .NET 10.0 SDK or later
 - Visual Studio 2022 (recommended) or VS Code with C# extension
+- A [Plaid](https://plaid.com) developer account ([sign up free](https://dashboard.plaid.com/signup)) with a Sandbox `client_id` and `secret` — the app cannot connect to any bank account, real or test, without these
 
 ### Installation
 
@@ -77,7 +80,21 @@ A modern WinUI 3 desktop application for managing and projecting cash flow over 
 
 ### First Launch
 
-On first launch, you'll be walked through connecting a bank account via Plaid — this is required before the app shows anything, since it's how the account balance and real transactions get in. After that, you can add, modify, or delete recurring projection items — each change is written to the database as soon as you make it.
+Before the app can show anything, it needs your own Plaid `client_id`/`secret` — Plaid credentials aren't bundled with the project, and the app defaults to Plaid's Sandbox environment (fake banks/transactions, safe for trying the app out):
+
+1. Get a Sandbox `client_id` and `secret` from the [Plaid dashboard](https://dashboard.plaid.com) (free).
+2. At the repo root, create `plaid.sandbox.secrets.json` (already gitignored — never commit this file):
+   ```json
+   {
+     "ClientId": "your-sandbox-client-id",
+     "SandboxSecret": "your-sandbox-secret"
+   }
+   ```
+3. Launch the app. You'll be walked through connecting a (Sandbox, by default) bank account via Plaid Link — this is how the account balance and transactions get in.
+
+To use the app against your *real* bank account instead of Sandbox test data, switch environments from the app's Plaid Settings: enter a Production `client_id`/`secret` there (stored in Windows Credential Manager, not a file) and switch to Production — this performs a real Plaid Link against your actual bank.
+
+Once connected, you can add, modify, or delete recurring projection items — each change is written to the database as soon as you make it.
 
 ## Usage
 
