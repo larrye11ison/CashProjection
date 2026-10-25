@@ -15,6 +15,14 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!--
+        Trims satellite resource assemblies (localized exception strings
+        etc.) from every referenced NuGet package down to just en-US —
+        this app has never localized into anything else. Does NOT cover
+        the WindowsAppSDK's own bundled native .mui resources; see the
+        RemoveNonEnglishWindowsAppSdkResources target below for those.
+    -->
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,5 +44,28 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!--
+      AddMicrosoftWindowsAppSDKPayloadFilesFromComponents (imported from
+      the Microsoft.WindowsAppSDK.Base NuGet package's self-contained
+      targets, triggered by WindowsAppSDKSelfContained=true above)
+      unconditionally globs every locale's Microsoft.ui.xaml.dll.mui /
+      Microsoft.UI.Xaml.Phone.dll.mui pair from the WindowsAppSDK's
+      runtimes-framework payload into the None/CopyToOutputDirectory
+      pipeline — about 90 near-empty folders, with no property exposed to
+      filter them, and (confirmed empirically) too early in the publish
+      pipeline to intercept by hooking AfterTargets on that target itself:
+      by the time ComputeResolvedFilesToPublishList runs, SDK publish
+      logic has already folded those items into its own tracking, so
+      removing from @(None) there turned out to be a no-op. Trimming
+      @(ResolvedFileToPublish) instead — the actual final list publish
+      copies from — is what works.
+  -->
+  <Target Name="RemoveNonEnglishWindowsAppSdkResources" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+          Condition="'%(Extension)' == '.mui' and !$([System.String]::Copy('%(RelativePath)').StartsWith('en-us\'))" />
+    </ItemGroup>
+  </Target>
 
 </Project>
