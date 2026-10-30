@@ -47,13 +47,14 @@
                         around depending on which ones apply to this row.
                     -->
                     <controls:DataGridTemplateColumn
-                        Width="90"
+                        Width="108"
                         Header="Flags"
                         IsReadOnly="True">
                         <controls:DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <Grid HorizontalAlignment="Center">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18" />
                                         <ColumnDefinition Width="18" />
                                         <ColumnDefinition Width="18" />
                                         <ColumnDefinition Width="18" />
@@ -131,6 +132,16 @@
                                         Glyph="&#xE823;"
                                         ToolTipService.ToolTip="Already reflected in your bank's live balance, but not yet posted as a transaction — Plaid's balance and transaction feeds can lag each other."
                                         Visibility="{Binding IsSyntheticPendingGap, Converter={StaticResource BoolToVis}}" />
+
+                                    <FontIcon
+                                        Grid.Column="5"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        FontSize="14"
+                                        Opacity="0.6"
+                                        Glyph="&#xE712;"
+                                        ToolTipService.ToolTip="There may be more history beyond this point — scrolling here loads it."
+                                        Visibility="{Binding MayHaveMoreHistory, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
                             </DataTemplate>
                         </controls:DataGridTemplateColumn.CellTemplate>
@@ -207,6 +218,27 @@
                     </controls:DataGridTemplateColumn>
                 </controls:DataGrid.Columns>
             </controls:DataGrid>
+        </Border>
+
+        <!--
+            Overlay, not a second row — a row that appears/disappears would
+            resize the grid's own viewport and could itself trigger another
+            scroll-position change right as a fetch starts.
+        -->
+        <Border
+            Margin="0,0,0,16"
+            Padding="12,6"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="16"
+            Visibility="{x:Bind ViewModel.IsLoadingMore, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ProgressRing Width="14" Height="14" IsActive="True" />
+                <TextBlock VerticalAlignment="Center" Text="Loading more…" />
+            </StackPanel>
         </Border>
     </Grid>
 </UserControl>

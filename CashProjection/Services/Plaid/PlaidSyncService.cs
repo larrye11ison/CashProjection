@@ -295,6 +295,16 @@ namespace CashProjection.Services.Plaid
                     account.StartingBalance = plaidAccount.Balances.Current ?? account.StartingBalance;
                     account.StartingBalanceAsOf = DateTime.UtcNow;
                     _accountRepo.Update(account);
+
+                    // Persists a correct EstimatedBalance for every real
+                    // transaction in this account's full history, so any
+                    // window read later — the initial load, a scrolled-to
+                    // page, or a Find-jumped window far from "now" — already
+                    // carries a correct Balance with nothing further to
+                    // compute. Cheap at realistic scale; run unconditionally
+                    // rather than tracking whether this account's own
+                    // transactions actually changed this pass.
+                    _bankTransactionRepo.RecalculateEstimatedBalances(account.Id, account.StartingBalance);
                 }
 
                 _statusVM?.Report($"Synced {totalChanged} transaction update(s).", busy: false);

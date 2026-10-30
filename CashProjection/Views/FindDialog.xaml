@@ -89,21 +89,21 @@
                                 <ColumnDefinition Width="110" />
                                 <ColumnDefinition Width="110" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Item.TransactionDateDisplay}" />
+                            <TextBlock Grid.Column="0" Text="{Binding TransactionDateDisplay}" />
                             <TextBlock
                                 Grid.Column="2"
                                 HorizontalAlignment="Right"
-                                Text="{Binding Item.DepositDisplay}" />
+                                Text="{Binding DepositDisplay}" />
                             <TextBlock
                                 Grid.Column="3"
                                 HorizontalAlignment="Right"
-                                Text="{Binding Item.PaymentDisplay}" />
+                                Text="{Binding PaymentDisplay}" />
                         </Grid>
 
                         <ContentControl
                             Grid.Row="1"
                             HorizontalContentAlignment="Stretch"
-                            Content="{Binding Item}"
+                            Content="{Binding NameSource}"
                             ContentTemplate="{StaticResource WrappingDualLineNameTemplate}" />
                     </Grid>
                 </DataTemplate>

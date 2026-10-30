@@ -48,6 +48,16 @@ namespace CashProjection.Views
 
             ApplyRowVisuals(e.Row, vm);
 
+            // A boundary row scrolling into view is exactly "the user has
+            // scrolled near the edge of what's loaded" — reuses this
+            // already-wired virtualization hook instead of reaching into
+            // the DataGrid's internal ScrollViewer. Idempotent/guarded by
+            // ViewModel.IsLoadingMore, so this firing again for the same
+            // row before the fetch completes (or after it, once the flag's
+            // been cleared) is a safe no-op either way.
+            if (vm.MayHaveMoreHistory)
+                ViewModel?.LoadMoreHistory(vm);
+
             void Handler(object? s, PropertyChangedEventArgs args)
             {
                 if (args.PropertyName is nameof(ProjectionItemViewModel.Accent)

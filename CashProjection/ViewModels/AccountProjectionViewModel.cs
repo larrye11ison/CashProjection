@@ -45,8 +45,40 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private ProjectionItemViewModel? _selectedTransaction;
 
+        // Shown as a small "busy pill" near the bottom of the grid while a
+        // scroll-triggered (or Find-jump) page fetch is in flight.
+        [ObservableProperty]
+        private bool _isLoadingMore;
+
         private ObservableCollection<ProjectionItemViewModel> _transactions;
         private WeakReference<FrameworkElement>? _viewRef;
+
+        // How far back the initial load reaches, and how many rows a
+        // scroll-triggered "load more" fetches at a time — the literal
+        // figures suggested when this windowing was designed. Count-based
+        // (not calendar-month-based) paging for "load more" specifically
+        // avoids needing to special-case a sparse month that would
+        // otherwise come back empty and look like "no more history."
+        private const int InitialWindowMonths = 3;
+        private const int PageSize = 30;
+        private const int FindJumpWindowDays = 30;
+
+        // One contiguous span of bank-transaction history currently loaded
+        // into _transactions. The main range always reaches "now" (its
+        // newest edge is never a tracked boundary — it only ever grows via
+        // ordinary Plaid sync, not scrolling); any other range was opened
+        // by jumping to a Find result outside every already-loaded range,
+        // and tracks both edges until it merges with another range.
+        private sealed class LoadedRange
+        {
+            public DateTime NewestDate;
+            public int NewestId;
+            public DateTime OldestDate;
+            public int OldestId;
+            public bool IsMain;
+        }
+
+        private readonly List<LoadedRange> _loadedRanges = new();
 
         public AccountProjectionViewModel(
             Account account,
@@ -91,19 +123,269 @@ namespace CashProjection.ViewModels
         }
 
         // Populates _transactions with both user-editable projection items
-        // and read-only rows mirroring every real BankTransaction — the grid
-        // always shows real transactions, not only once matched.
+        // (always loaded in full — bounded, future-dated, never paginated)
+        // and read-only rows mirroring real BankTransactions within the
+        // initial windowed range (the last InitialWindowMonths) — the grid
+        // always shows real transactions, not only once matched. Older
+        // history loads incrementally afterward, see LoadMoreHistory.
         private void LoadAllRows()
         {
             _transactions.Clear();
+            _loadedRanges.Clear();
 
             var items = _itemRepo.GetByAccount(_account.Id).Select(i => new ProjectionItemViewModel(i)).ToList();
-            var bankRows = _bankRepo.GetByAccount(_account.Id).Select(ProjectionItemViewModel.FromBankTransaction).ToList();
+            var bankRows = _bankRepo.GetSince(_account.Id, DateTime.Today.AddMonths(-InitialWindowMonths))
+                .Select(ProjectionItemViewModel.FromBankTransaction)
+                .ToList();
 
             ApplyConfirmedMatches(items, bankRows);
 
             _transactions.AddRange(items);
             _transactions.AddRange(bankRows);
+
+            RegisterRange(bankRows, isMain: true);
+        }
+
+        // Records a newly-loaded, already-sorted-DESC batch of bank rows as
+        // a tracked range and sets its boundary "might be more" flag(s) via
+        // a cheap existence check. The main range's newest edge is never
+        // flagged — it always reaches "now" by construction.
+        private void RegisterRange(List<ProjectionItemViewModel> bankRows, bool isMain)
+        {
+            if (bankRows.Count == 0)
+                return;
+
+            var newest = bankRows[0];
+            var oldest = bankRows[^1];
+            var range = new LoadedRange
+            {
+                NewestDate = newest.TransactionDate,
+                NewestId = newest.BankTransactionId!.Value,
+                OldestDate = oldest.TransactionDate,
+                OldestId = oldest.BankTransactionId!.Value,
+                IsMain = isMain,
+            };
+
+            oldest.MayHaveMoreBefore = _bankRepo.HasMoreBefore(_account.Id, range.OldestDate, range.OldestId);
+            if (!isMain)
+                newest.MayHaveMoreAfter = _bankRepo.HasMoreAfter(_account.Id, range.NewestDate, range.NewestId);
+
+            _loadedRanges.Add(range);
+        }
+
+        private ProjectionItemViewModel? FindBankRow(int bankTransactionId) =>
+            _transactions.FirstOrDefault(t => t.BankTransactionId == bankTransactionId);
+
+        private static int CompareCursor(DateTime dateA, int idA, DateTime dateB, int idB)
+        {
+            var cmp = dateA.CompareTo(dateB);
+            return cmp != 0 ? cmp : idA.CompareTo(idB);
+        }
+
+        // Called from AccountProjectionView.xaml.cs's LoadingRow handler
+        // when the row being realized is a tracked boundary — fetches the
+        // next page in whichever direction that boundary faces. Guarded by
+        // IsLoadingMore so rapid LoadingRow firing during a fast scroll
+        // can't trigger duplicate concurrent fetches.
+        public void LoadMoreHistory(ProjectionItemViewModel boundaryRow)
+        {
+            if (IsLoadingMore)
+                return;
+
+            LoadedRange? range = null;
+            var older = false;
+
+            if (boundaryRow.MayHaveMoreBefore)
+            {
+                range = _loadedRanges.FirstOrDefault(r => r.OldestId == boundaryRow.BankTransactionId);
+                older = true;
+            }
+            else if (boundaryRow.MayHaveMoreAfter)
+            {
+                range = _loadedRanges.FirstOrDefault(r => r.NewestId == boundaryRow.BankTransactionId);
+            }
+
+            if (range is null)
+                return;
+
+            IsLoadingMore = true;
+            _ = LoadMoreHistoryAsync(range, older);
+        }
+
+        private async Task LoadMoreHistoryAsync(LoadedRange range, bool older)
+        {
+            var accountId = _account.Id;
+            var cursorDate = older ? range.OldestDate : range.NewestDate;
+            var cursorId = older ? range.OldestId : range.NewestId;
+
+            var page = await Task.Run(() => _bankRepo.GetPage(accountId, cursorDate, cursorId, PageSize, older));
+
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                ApplyLoadedPage(range, older, page);
+                IsLoadingMore = false;
+            });
+        }
+
+        // Extends a range with a freshly-fetched page, re-running matching
+        // for just the new rows, updating the range's cursor and boundary
+        // flag, and merging with any other range it now overlaps.
+        private void ApplyLoadedPage(LoadedRange range, bool older, List<BankTransaction> page)
+        {
+            if (page.Count == 0)
+            {
+                if (older)
+                {
+                    if (FindBankRow(range.OldestId) is { } oldestRow)
+                        oldestRow.MayHaveMoreBefore = false;
+                }
+                else if (FindBankRow(range.NewestId) is { } newestRow)
+                {
+                    newestRow.MayHaveMoreAfter = false;
+                }
+                return;
+            }
+
+            // The edge we're about to extend past is no longer a boundary —
+            // clear its flag before moving the cursor.
+            if (older)
+            {
+                if (FindBankRow(range.OldestId) is { } oldestRow)
+                    oldestRow.MayHaveMoreBefore = false;
+            }
+            else if (FindBankRow(range.NewestId) is { } newestRow)
+            {
+                newestRow.MayHaveMoreAfter = false;
+            }
+
+            var items = _transactions.Where(t => !t.IsReadOnly).ToList();
+            var newRows = page.Select(ProjectionItemViewModel.FromBankTransaction).ToList();
+            ApplyConfirmedMatches(items, newRows);
+            _transactions.AddRange(newRows);
+
+            if (older)
+            {
+                var newOldest = newRows[^1]; // page is TxnDate DESC, Id DESC
+                range.OldestDate = newOldest.TransactionDate;
+                range.OldestId = newOldest.BankTransactionId!.Value;
+                newOldest.MayHaveMoreBefore = _bankRepo.HasMoreBefore(_account.Id, range.OldestDate, range.OldestId);
+            }
+            else
+            {
+                var newNewest = newRows[0];
+                range.NewestDate = newNewest.TransactionDate;
+                range.NewestId = newNewest.BankTransactionId!.Value;
+                if (!range.IsMain)
+                    newNewest.MayHaveMoreAfter = _bankRepo.HasMoreAfter(_account.Id, range.NewestDate, range.NewestId);
+            }
+
+            MergeTouchingRanges();
+            ResortAndRecalculate();
+        }
+
+        // Repeatedly merges any two ranges whose loaded spans overlap —
+        // detected purely by comparing cursors, which only catches genuine
+        // overlap and not a same-day-adjacent-with-zero-rows-between case.
+        // Missing that rare case just leaves two ranges with a slightly
+        // redundant "might be more" flag a little longer, never a wrong
+        // Balance or a duplicated row (dedup below still applies on every
+        // merge).
+        private void MergeTouchingRanges()
+        {
+            bool mergedAny;
+            do
+            {
+                mergedAny = false;
+                for (var i = 0; i < _loadedRanges.Count && !mergedAny; i++)
+                {
+                    for (var j = i + 1; j < _loadedRanges.Count && !mergedAny; j++)
+                    {
+                        var a = _loadedRanges[i];
+                        var b = _loadedRanges[j];
+
+                        var overlap =
+                            CompareCursor(a.OldestDate, a.OldestId, b.NewestDate, b.NewestId) <= 0 &&
+                            CompareCursor(a.NewestDate, a.NewestId, b.OldestDate, b.OldestId) >= 0;
+
+                        if (!overlap)
+                            continue;
+
+                        MergeRangeInto(a, b);
+                        _loadedRanges.RemoveAt(j);
+                        mergedAny = true;
+                    }
+                }
+            } while (mergedAny);
+
+            DedupeTransactionsByBankTransactionId();
+        }
+
+        private void MergeRangeInto(LoadedRange a, LoadedRange b)
+        {
+            if (FindBankRow(a.OldestId) is { } aOldest)
+                aOldest.MayHaveMoreBefore = false;
+            if (!a.IsMain && FindBankRow(a.NewestId) is { } aNewest)
+                aNewest.MayHaveMoreAfter = false;
+            if (FindBankRow(b.OldestId) is { } bOldest)
+                bOldest.MayHaveMoreBefore = false;
+            if (!b.IsMain && FindBankRow(b.NewestId) is { } bNewest)
+                bNewest.MayHaveMoreAfter = false;
+
+            if (CompareCursor(b.NewestDate, b.NewestId, a.NewestDate, a.NewestId) > 0)
+            {
+                a.NewestDate = b.NewestDate;
+                a.NewestId = b.NewestId;
+            }
+            if (CompareCursor(b.OldestDate, b.OldestId, a.OldestDate, a.OldestId) < 0)
+            {
+                a.OldestDate = b.OldestDate;
+                a.OldestId = b.OldestId;
+            }
+            a.IsMain = a.IsMain || b.IsMain;
+        }
+
+        // Two ranges opened independently (e.g. the main window and a
+        // Find-jump window that turned out to overlap it) can briefly carry
+        // the same BankTransactionId in both fetches before merging — keep
+        // whichever instance appears first and drop the rest.
+        private void DedupeTransactionsByBankTransactionId()
+        {
+            var seen = new HashSet<int>();
+            for (var i = _transactions.Count - 1; i >= 0; i--)
+            {
+                var id = _transactions[i].BankTransactionId;
+                if (id is null)
+                    continue;
+                if (!seen.Add(id.Value))
+                    _transactions.RemoveAt(i);
+            }
+        }
+
+        // Opens (or extends into) a loaded range covering centerDate, for a
+        // Find result that landed outside every range currently loaded —
+        // fetches a window of context around it, merges with anything it
+        // now overlaps, and returns the row matching bankTransactionId so
+        // the caller can focus/scroll to it.
+        public ProjectionItemViewModel? LoadRangeAroundDate(DateTime centerDate, int bankTransactionId)
+        {
+            var existing = FindBankRow(bankTransactionId);
+            if (existing is not null)
+                return existing;
+
+            var page = _bankRepo.GetAroundDate(_account.Id, centerDate, FindJumpWindowDays);
+            if (page.Count == 0)
+                return null;
+
+            var items = _transactions.Where(t => !t.IsReadOnly).ToList();
+            var newRows = page.Select(ProjectionItemViewModel.FromBankTransaction).ToList();
+            ApplyConfirmedMatches(items, newRows);
+            _transactions.AddRange(newRows);
+
+            RegisterRange(newRows, isMain: false);
+            MergeTouchingRanges();
+            ResortAndRecalculate();
+
+            return FindBankRow(bankTransactionId);
         }
 
         // Inserts, updates in place, or removes the single synthetic
@@ -388,10 +670,11 @@ namespace CashProjection.ViewModels
         // its transaction feed have drifted apart and you've confirmed the
         // true post-transaction balance some other way (your bank's own
         // website, a statement, etc.). Writes directly to BankTransactions
-        // via the one column UpdateRunningBalance touches, then does a full
-        // reload so ResortAndRecalculate's checkpoint-aware backward walk
-        // picks this row up as a trusted anchor and recomputes every
-        // earlier real transaction's balance from it.
+        // via the one column UpdateRunningBalance touches, then immediately
+        // recomputes and persists EstimatedBalance for every earlier real
+        // transaction in the account's full history (not just what's
+        // loaded) so this new checkpoint ripples backward correctly
+        // wherever it's read from, before reloading the grid.
         //
         // Deliberately NOT recorded in change history — there's no
         // BankTransaction case in ChangeEntityType, and this follows the
@@ -405,6 +688,7 @@ namespace CashProjection.ViewModels
                 return;
 
             _bankRepo.UpdateRunningBalance(bankTransactionId, newBalance);
+            _bankRepo.RecalculateEstimatedBalances(_account.Id, _account.StartingBalance);
             ReloadTransactionsFromDatabase();
             _statusVM?.Report($"Corrected balance for '{transaction.Name}' to {newBalance:C2}.", busy: false, StatusSeverity.Info);
         }
@@ -439,19 +723,31 @@ namespace CashProjection.ViewModels
         // rather than going through this view model's own collection.
         public void ReloadTransactionsFromDatabase()
         {
-            // LoadAllRows() below rebuilds every row as a brand-new
-            // ProjectionItemViewModel instance, so SelectedTransaction's
-            // current reference is about to go dangling even if the same
-            // logical row still exists afterward — capture enough to
-            // re-find it by identity (below), not by reference.
+            // Rebuilds every row as a brand-new ProjectionItemViewModel
+            // instance, so SelectedTransaction's current reference is about
+            // to go dangling even if the same logical row still exists
+            // afterward — capture enough to re-find it by identity (below),
+            // not by reference.
             var previousSelection = SelectedTransaction;
             var hadKeyboardFocus = IsGridKeyboardFocusWithin();
+
+            // Snapshot whatever range(s) were loaded before clearing, so
+            // the reload can re-fetch those same spans instead of
+            // collapsing back to the initial window — e.g. Undo/Redo
+            // shouldn't yank the view back to 3 months after the user's
+            // already scrolled further.
+            var previousRanges = _loadedRanges
+                .Select(r => (r.NewestDate, r.NewestId, r.OldestDate, r.OldestId, r.IsMain))
+                .ToList();
 
             foreach (var t in _transactions)
                 t.PropertyChanged -= Transaction_PropertyChanged;
             _transactions.CollectionChanged -= Transactions_CollectionChanged;
 
-            LoadAllRows();
+            if (previousRanges.Count == 0)
+                LoadAllRows();
+            else
+                ReloadPreservingRanges(previousRanges);
 
             foreach (var t in _transactions)
                 t.PropertyChanged += Transaction_PropertyChanged;
@@ -469,6 +765,39 @@ namespace CashProjection.ViewModels
                 else
                     SelectedTransaction = restored;
             }
+        }
+
+        // Re-fetches each previously-loaded range's exact span (the main
+        // range re-anchored to "now" via GetSince, any other range via its
+        // exact saved bounds) rather than resetting to the initial window.
+        // Bank transaction rows themselves don't change identity across the
+        // events that trigger a reload (Undo/Redo only touch ProjectionItem
+        // rows; CorrectBalance only touches a RunningBalance/EstimatedBalance
+        // column) — only their computed Balance/match state can change —
+        // so re-fetching the same spans is safe and returns the same rows.
+        private void ReloadPreservingRanges(
+            List<(DateTime NewestDate, int NewestId, DateTime OldestDate, int OldestId, bool IsMain)> previousRanges)
+        {
+            _transactions.Clear();
+            _loadedRanges.Clear();
+
+            var items = _itemRepo.GetByAccount(_account.Id).Select(i => new ProjectionItemViewModel(i)).ToList();
+            _transactions.AddRange(items);
+
+            foreach (var range in previousRanges)
+            {
+                var rows = range.IsMain
+                    ? _bankRepo.GetSince(_account.Id, range.OldestDate)
+                    : _bankRepo.GetBetween(_account.Id, range.OldestDate, range.NewestDate);
+
+                var vms = rows.Select(ProjectionItemViewModel.FromBankTransaction).ToList();
+                ApplyConfirmedMatches(items, vms);
+                _transactions.AddRange(vms);
+
+                RegisterRange(vms, range.IsMain);
+            }
+
+            MergeTouchingRanges();
         }
 
         // Identifies "the same logical row" across a full reload, where
@@ -556,19 +885,15 @@ namespace CashProjection.ViewModels
         }
 
         // Real bank transactions and projected items get their Balance
-        // computed in two separate passes:
-        //   - Real rows are walked backward through calendar-date groups
-        //     (grouped since Plaid gives no reliable time-of-day to order
-        //     same-day rows honestly), starting from today's live balance.
-        //     Any date-group containing a known balance — Plaid's own
-        //     running_balance, or a manual correction via the Correct
-        //     Balance popover (BankTransactionRepository.UpdateRunningBalance)
-        //     — is a trusted checkpoint: it resets the running anchor for
-        //     every earlier group, instead of every real row being
-        //     estimated purely from today's balance regardless of how far
-        //     back it is. Never influenced by projected items.
+        // from two different sources:
+        //   - Real rows' Balance is persisted
+        //     (BankTransactionRepository.RecalculateEstimatedBalances) and
+        //     already correct by the time FromBankTransaction loads them —
+        //     never touched here. Only the "is there a live reconciliation
+        //     gap right now" check below still needs a short backward look,
+        //     to drive the pending-gap placeholder.
         //   - Projected rows: a forward-looking estimate, starting from the
-        //     same current balance and advanced only through other
+        //     current live balance and advanced only through other
         //     projected items in date order.
         private void ResortAndRecalculate()
         {
@@ -589,79 +914,33 @@ namespace CashProjection.ViewModels
             _isRecalculating = true;
             try
             {
-                // Segmented by "checkpoint" dates — any date-group
-                // containing a known-balance row (Plaid-reported, or
-                // manually set via the Correct Balance popover) is trusted
-                // as-is and RESETS the running anchor for every earlier
-                // group, rather than every real row being estimated purely
-                // from today's live balance regardless of how far back it
-                // is. This is what makes a manual correction on an old
-                // transaction actually ripple backward through everything
-                // older than it — not just change that one row.
-                var realGroupsByDateDescending = _transactions
-                    .Where(t => t.IsReadOnly && !t.IsSyntheticPendingGap)
-                    .GroupBy(t => t.TransactionDate.Date)
-                    .OrderByDescending(g => g.Key)
-                    .ToList();
-
-                // Detected live, every pass, as a side effect of this same
-                // walk — the discrepancy between "what today's live balance
-                // implies this date-group's balance should be, walking
-                // backward through only the real transactions actually
-                // known in between" and what the FIRST checkpoint we reach
-                // (Plaid-reported or manually corrected) actually says.
-                // Null until that first checkpoint is hit; stays at
-                // whatever it was set to after that, since only the
-                // most-recent checkpoint's reconciliation against "today"
-                // is meaningful here — older checkpoints further back just
-                // continue resetting the anchor for their own earlier
-                // groups, same as before. This is what makes a manual
-                // correction (or ordinary Plaid sync latency) that no
-                // longer reconciles with the live balance get explained by
-                // a "Pending transaction(s)" placeholder instead of
-                // silently vanishing into an unrelated row's balance.
+                // Only the FIRST checkpoint hit walking backward from
+                // today's live balance matters here — the discrepancy
+                // between what that walk implies and what the checkpoint
+                // actually says is what explains the "Pending
+                // transaction(s)" placeholder (ordinary Plaid sync latency,
+                // or a manual correction that no longer reconciles with the
+                // live balance). Bounded to the main (today-anchored)
+                // range only — a Find-jumped range elsewhere in history
+                // isn't contiguous with "now", so walking into it here
+                // would silently treat a real unloaded gap as if it
+                // weren't there.
+                var mainRangeOldestDate = _loadedRanges.FirstOrDefault(r => r.IsMain)?.OldestDate;
                 decimal? pendingGapAmount = null;
-
-                // Every date-group walked BEFORE the first checkpoint is
-                // found gets its Balance assigned from the raw live
-                // StartingBalance, with no idea yet that a gap exists — the
-                // gap is only known once the walk actually reaches that
-                // checkpoint, which can be several groups further back.
-                // Collected here so they can be corrected retroactively
-                // once the gap is actually known (below), rather than
-                // silently keeping their un-adjusted (wrong) Balance.
-                var groupsBeforeFirstCheckpoint = new List<IGrouping<DateTime, ProjectionItemViewModel>>();
-
                 var runningReal = _account.StartingBalance;
-                foreach (var dateGroup in realGroupsByDateDescending)
+                foreach (var dateGroup in _transactions
+                    .Where(t => t.IsReadOnly && !t.IsSyntheticPendingGap)
+                    .Where(t => mainRangeOldestDate is null || t.TransactionDate.Date >= mainRangeOldestDate.Value)
+                    .GroupBy(t => t.TransactionDate.Date)
+                    .OrderByDescending(g => g.Key))
                 {
                     var checkpoint = dateGroup.FirstOrDefault(t => t.HasKnownBalance);
                     if (checkpoint is not null)
                     {
-                        if (pendingGapAmount is null)
-                            pendingGapAmount = runningReal - checkpoint.Balance;
-
-                        // Trusted fact — becomes the anchor for every
-                        // date-group older than it. Still (re-)applied to
-                        // every row in this date-group, not just the
-                        // checkpoint row itself: Plaid gives no reliable
-                        // time-of-day, so same-day rows always share one
-                        // end-of-date balance, same as the estimated case
-                        // below — otherwise an unknown-balance sibling of a
-                        // same-day checkpoint would never get a Balance
-                        // assigned at all.
-                        runningReal = checkpoint.Balance;
-                    }
-                    else if (pendingGapAmount is null)
-                    {
-                        groupsBeforeFirstCheckpoint.Add(dateGroup);
+                        pendingGapAmount = runningReal - checkpoint.Balance;
+                        break;
                     }
 
-                    foreach (var t in dateGroup)
-                        t.Balance = runningReal; // balance as of end of this date
-
-                    // Step back to the balance as it stood before this date's
-                    // transactions, i.e. after the previous date's.
                     var netEffect = dateGroup.Sum(t => (t.Deposit ?? 0m) - (t.Payment ?? 0m));
                     runningReal -= netEffect;
                 }
@@ -669,21 +948,9 @@ namespace CashProjection.ViewModels
                 // Adds, updates in place, or removes the synthetic
                 // placeholder based on what the walk above just found — a
                 // null pendingGapAmount (no checkpoint anywhere in the
-                // known history) means there's nothing to compare the live
+                // loaded window) means there's nothing to compare the live
                 // balance against, so no placeholder either.
                 SyncPendingGapPlaceholder(pendingGapAmount ?? 0m);
-
-                // Retroactively correct every row assigned before the gap
-                // was known — e.g. a real transaction dated between today
-                // and the checkpoint should reflect that the pending
-                // transaction hasn't posted yet either, the same as today's
-                // own balance does.
-                if (pendingGapAmount is { } gap && Math.Abs(gap) >= 0.01m)
-                {
-                    foreach (var dateGroup in groupsBeforeFirstCheckpoint)
-                        foreach (var t in dateGroup)
-                            t.Balance -= gap;
-                }
 
                 // Keep EffectiveSortDate in sync with the item's own date
                 // for every unmatched row — PushForward/edits mutate
@@ -772,9 +1039,35 @@ namespace CashProjection.ViewModels
                 // looking — there's no value in flagging a projected low
                 // point months from now when nothing between here and
                 // there is settled yet.
+                //
+                // One exception to "only projection items": the live current
+                // balance itself (Account.StartingBalance) has to be in the
+                // running too, or a account that's already at its lowest
+                // point *right now* — nothing projected ever dips any lower
+                // — would wrongly flag some future projection as the low
+                // point instead of recognizing today as it. The row that
+                // carries that live value is whichever one ResortAndRecalculate
+                // just synced it onto: the synthetic pending-gap placeholder
+                // if sync latency (or a stale manual correction) left one
+                // outstanding, since that's the row actually holding
+                // Account.StartingBalance right now (see
+                // SyncPendingGapPlaceholder/CreatePendingGapPlaceholder) —
+                // otherwise the most recent real transaction, whose Balance
+                // reconciles to the same live value once there's no gap left
+                // to explain.
+                var currentBalanceRow = _transactions.FirstOrDefault(t => t.IsSyntheticPendingGap)
+                    ?? _transactions
+                        .Where(t => t.IsReadOnly)
+                        .OrderByDescending(t => t.TransactionDate)
+                        .ThenByDescending(t => t.BankTransactionId)
+                        .FirstOrDefault();
+
                 var candidates = ordered
                     .Where(t => !t.IsReadOnly && t.TransactionDate.Date <= end)
                     .ToList();
+                if (currentBalanceRow is not null)
+                    candidates.Add(currentBalanceRow);
+
                 ProjectionItemViewModel? lowest = null;
                 if (candidates.Count > 0)
                 {

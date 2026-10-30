@@ -473,12 +473,22 @@ namespace CashProjection.ViewModels
         [RelayCommand]
         public void ConfirmFind()
         {
-            var target = SelectedSearchResult?.Item ?? SearchResults.FirstOrDefault()?.Item;
-            if (target is null)
+            var result = SelectedSearchResult ?? SearchResults.FirstOrDefault();
+            if (result is null)
                 return;
 
             IsFindOpen = false;
-            AccountVM.FocusTransaction(target);
+
+            // Already loaded (a projection item, or a bank row already in
+            // the grid's window) — focus it directly as before. Otherwise
+            // the match landed outside every loaded range: load a window
+            // around it first, then focus whatever row that materializes.
+            var target = result.Item ?? (result.UnloadedTransaction is { } txn
+                ? AccountVM.LoadRangeAroundDate(txn.TxnDate, txn.Id)
+                : null);
+
+            if (target is not null)
+                AccountVM.FocusTransaction(target);
         }
 
         public void OnFindKeyDown(KeyRoutedEventArgs e)
@@ -535,19 +545,45 @@ namespace CashProjection.ViewModels
             if (tokens.Length == 0 || AccountVM?.Transactions is null)
                 return;
 
-            var results = AccountVM
-                .Transactions.Where(vm => !vm.IsSyntheticPendingGap)
+            // Projection items are never paginated, so an in-memory pass
+            // over them is still correct and cheap.
+            var projectionHits = AccountVM
+                .Transactions.Where(vm => vm.IsEditable)
                 .Select(vm =>
                 {
                     var lower = (vm.Name ?? string.Empty).ToLowerInvariant();
                     var hits = tokens.Count(tok => lower.Contains(tok));
-                    return new { vm, hits };
+                    return (vm, hits);
                 })
                 .Where(x => x.hits > 0)
-                .OrderByDescending(x => x.hits)
-                .ThenByDescending(x => x.vm.TransactionDate)
-                .ThenBy(x => x.vm.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(x => new SearchResult(x.vm, x.hits));
+
+            // Bank transactions can live outside whatever the grid
+            // currently has loaded, so Find has to ask the database
+            // directly rather than relying on AccountVM.Transactions —
+            // searches all history by default. Prefer the already-loaded
+            // ProjectionItemViewModel instance when one exists (so
+            // selecting the result just focuses it, same as before);
+            // otherwise wrap the raw BankTransaction and let ConfirmFind
+            // load the surrounding window on demand.
+            var bankHits = _bankRepo
+                .SearchByAccount(AccountVM.AccountId, tokens)
+                .Select(txn =>
+                {
+                    var hits = tokens.Count(tok => txn.Description.ToLowerInvariant().Contains(tok));
+                    var loaded = AccountVM.Transactions.FirstOrDefault(vm => vm.BankTransactionId == txn.Id);
+                    return (loaded, txn, hits);
+                })
+                .Where(x => x.hits > 0)
+                .Select(x => x.loaded is not null
+                    ? new SearchResult(x.loaded, x.hits)
+                    : new SearchResult(x.txn, x.hits));
+
+            var results = projectionHits
+                .Concat(bankHits)
+                .OrderByDescending(r => r.Hits)
+                .ThenByDescending(r => r.TransactionDate)
+                .ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase);
 
             foreach (var r in results)
                 SearchResults.Add(r);
@@ -562,12 +598,48 @@ namespace CashProjection.ViewModels
             {
                 Item = item;
                 Hits = hits;
-                Display = $"{item.TransactionDate:d}  •  {item.Name}";
+                TransactionDate = item.TransactionDate;
+                Name = item.Name;
+                DepositDisplay = item.DepositDisplay;
+                PaymentDisplay = item.PaymentDisplay;
             }
 
-            public ProjectionItemViewModel Item { get; }
+            // A match outside every range currently loaded in the grid —
+            // ConfirmFind loads a window around it and resolves this to a
+            // live ProjectionItemViewModel before focusing. Until then
+            // there's no ProjectionItemViewModel to display, so this result
+            // carries its own uniform display values instead of relying on
+            // Item (FindDialog's row template binds to NameSource/
+            // TransactionDateDisplay/DepositDisplay/PaymentDisplay, not
+            // Item directly, so both constructors render identically).
+            public SearchResult(BankTransaction transaction, int hits)
+            {
+                UnloadedTransaction = transaction;
+                Hits = hits;
+                TransactionDate = transaction.TxnDate;
+                Name = transaction.PrimaryDisplayName;
+                // Mirrors ProjectionItemViewModel.FromBankTransaction's own
+                // sign convention: Plaid's positive amount = payment (money
+                // out), negative = deposit (money in).
+                DepositDisplay = transaction.Amount < 0 ? (-transaction.Amount).ToString("C2") : string.Empty;
+                PaymentDisplay = transaction.Amount > 0 ? transaction.Amount.ToString("C2") : string.Empty;
+            }
+
+            public ProjectionItemViewModel? Item { get; }
+            public BankTransaction? UnloadedTransaction { get; }
+
+            // What FindDialog's shared WrappingDualLineNameTemplate binds
+            // to — both ProjectionItemViewModel and BankTransaction already
+            // expose the same PrimaryDisplayName/SecondaryDisplayText/
+            // HasDistinctSecondaryText shape that template relies on.
+            public object NameSource => (object?)Item ?? UnloadedTransaction!;
+
             public int Hits { get; }
-            public string Display { get; }
+            public DateTime TransactionDate { get; }
+            public string TransactionDateDisplay => TransactionDate.ToString("d");
+            public string Name { get; }
+            public string DepositDisplay { get; }
+            public string PaymentDisplay { get; }
         }
     }
 }

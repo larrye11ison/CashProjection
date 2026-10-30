@@ -42,6 +42,19 @@ namespace CashProjection.Models
         // transactions, and not every institution provides it — null means
         // "unknown," not zero.
         public decimal? RunningBalance { get; set; }
+
+        // The app's own computed running balance, persisted so any window
+        // of history read later (a scrolled-to page, or a Find-jumped
+        // window far from "now") already carries a correct value without
+        // needing to be stitched into one contiguous in-memory chain first.
+        // Kept separate from RunningBalance, which means "a known fact" —
+        // use Balance below rather than this directly.
+        public decimal EstimatedBalance { get; set; }
+
+        // What the UI should actually display: the bank-reported/manually
+        // corrected figure when known, otherwise the app's own estimate.
+        public decimal Balance => RunningBalance ?? EstimatedBalance;
+
         public DateTime ImportedAtUtc { get; set; } = DateTime.UtcNow;
 
         // Single canonical "how should this transaction's name/description

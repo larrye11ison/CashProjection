@@ -34,6 +34,19 @@ namespace CashProjection
             ConfigureServices(services);
             _serviceProvider = services.BuildServiceProvider();
 
+            // One-time (and self-healing) pass: make sure every account's
+            // persisted EstimatedBalance is up to date before anything
+            // reads it — covers the migration that just backfilled the
+            // column with a '0' placeholder, and quietly fixes any future
+            // code path that forgets to call this after changing history.
+            // Cheap at this app's realistic data scale.
+            {
+                var accountRepo = _serviceProvider.GetRequiredService<AccountRepository>();
+                var bankTransactionRepo = _serviceProvider.GetRequiredService<BankTransactionRepository>();
+                foreach (var account in accountRepo.GetAll())
+                    bankTransactionRepo.RecalculateEstimatedBalances(account.Id, account.StartingBalance);
+            }
+
             var linkService = _serviceProvider.GetRequiredService<PlaidLinkService>();
             var settings = _serviceProvider.GetRequiredService<PlaidSettingsService>();
 

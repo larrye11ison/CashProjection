@@ -103,6 +103,26 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private DateTime _effectiveSortDate = DateTime.Today;
 
+        // Bank-row-only: true when this row sits at the older/newer edge of
+        // one of AccountProjectionViewModel's loaded transaction ranges,
+        // and a subsequent query at that edge hasn't yet confirmed there's
+        // nothing more in that direction. Drives both a UI affordance (a
+        // small accent on the row) and the LoadingRow-triggered "load more"
+        // hook — see AccountProjectionView.xaml.cs. Cleared (set false) the
+        // moment a query at that edge comes back empty, or the range merges
+        // with an adjacent one and the edge becomes internal.
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(MayHaveMoreHistory))]
+        private bool _mayHaveMoreBefore;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(MayHaveMoreHistory))]
+        private bool _mayHaveMoreAfter;
+
+        // Single bindable flag for the grid's Flags column — the direction
+        // doesn't matter for this icon, just "loading more here is possible."
+        public bool MayHaveMoreHistory => MayHaveMoreBefore || MayHaveMoreAfter;
+
         public bool IsMatched => MatchGroupId.HasValue;
 
         // WinUI styles have no DataTrigger — WPF's WarningRowStyle used a
@@ -259,8 +279,7 @@ namespace CashProjection.ViewModels
             else if (txn.Amount < 0)
                 vm.Deposit = -txn.Amount;
             vm.Name = txn.Description;
-            if (txn.RunningBalance.HasValue)
-                vm.Balance = txn.RunningBalance.Value;
+            vm.Balance = txn.Balance;
             return vm;
         }
 
