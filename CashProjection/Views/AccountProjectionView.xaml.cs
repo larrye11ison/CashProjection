@@ -22,7 +22,11 @@ namespace CashProjection.Views
         public AccountProjectionView()
         {
             InitializeComponent();
-            Loaded += (_, _) => ViewModel?.SetViewReference(this);
+            Loaded += (_, _) =>
+            {
+                ViewModel?.SetViewReference(this);
+                ViewModel?.CenterOnTodayRowIfFirstLoad();
+            };
         }
 
         public AccountProjectionViewModel? ViewModel
@@ -34,7 +38,10 @@ namespace CashProjection.Views
         private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             if (d is AccountProjectionView view && e.NewValue is AccountProjectionViewModel vm)
-                view.ViewModel?.SetViewReference(view);
+            {
+                vm.SetViewReference(view);
+                vm.CenterOnTodayRowIfFirstLoad();
+            }
         }
 
         // WinUI styles have no DataTrigger, so the row-level highlighting
