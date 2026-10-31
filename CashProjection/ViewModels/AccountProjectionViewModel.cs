@@ -53,6 +53,14 @@ namespace CashProjection.ViewModels
         private ObservableCollection<ProjectionItemViewModel> _transactions;
         private WeakReference<FrameworkElement>? _viewRef;
 
+        // Consumed exactly once, by whichever of AccountProjectionView's
+        // OnViewModelChanged/Loaded hooks reaches CenterOnTodayRowIfFirstLoad
+        // first for this ViewModel instance — the grid starts scrolled to
+        // the top of the sort order (soonest/furthest-future first), so
+        // without this the very first thing an account with many
+        // projections shows is nothing but upcoming projections.
+        private bool _hasInitialCenterPending = true;
+
         // How far back the initial load reaches, and how many rows a
         // scroll-triggered "load more" fetches at a time — the literal
         // figures suggested when this windowing was designed. Count-based
@@ -605,15 +613,25 @@ namespace CashProjection.ViewModels
         // whole list," which is exactly the opposite of useful here.
         public void FocusGridAfterPopoverClosed()
         {
-            var today = DateTime.Today;
-            var target = SelectedTransaction
-                ?? _transactions
-                    .OrderBy(t => t, s_comparer)
-                    .OrderBy(t => Math.Abs((t.TransactionDate.Date - today).Ticks))
-                    .FirstOrDefault();
+            var target = SelectedTransaction ?? FindRowClosestToToday();
 
             if (target is not null)
                 FocusTransaction(target);
+        }
+
+        // Ties broken by the grid's own display order. Deliberately NOT an
+        // exact TransactionDate == today match with a "first row" fallback
+        // behind it — the grid sorts newest/furthest-future first, so on
+        // the (common) day nothing is dated exactly today, "first row"
+        // silently meant "the single furthest-future-dated row in the
+        // whole list," which is exactly the opposite of useful here.
+        private ProjectionItemViewModel? FindRowClosestToToday()
+        {
+            var today = DateTime.Today;
+            return _transactions
+                .OrderBy(t => t, s_comparer)
+                .OrderBy(t => Math.Abs((t.TransactionDate.Date - today).Ticks))
+                .FirstOrDefault();
         }
 
         // Selects and scrolls to a row — used by Find to jump to a result,
@@ -647,6 +665,121 @@ namespace CashProjection.ViewModels
                 dg.UpdateLayout();
                 dg.Focus(FocusState.Programmatic);
             });
+        }
+
+        // Called once per ViewModel instance, by whichever of
+        // AccountProjectionView's OnViewModelChanged/Loaded hooks reaches it
+        // first — there's no reliable single point to hang this off
+        // earlier: the view is a singleton reused across account switches,
+        // so OnViewModelChanged (not Loaded) is the real per-account
+        // trigger once the app's up and running, but Loaded is needed too
+        // to cover the very first account shown at startup, in case the
+        // view hasn't entered the tree yet when its ViewModel is first set.
+        public void CenterOnTodayRowIfFirstLoad()
+        {
+            if (!_hasInitialCenterPending)
+                return;
+            _hasInitialCenterPending = false;
+
+            if (FindRowClosestToToday() is { } target)
+                CenterRowInGrid(target);
+        }
+
+        // DataGrid's only public scrolling primitive is ScrollIntoView,
+        // which brings an item minimally into view — pinned to whichever
+        // edge the scroll approached from, not centered — and its real
+        // scroll offset is a private implementation detail, not something
+        // safe to reach into directly. This fakes centering within that
+        // public API: ScrollIntoView first lands target at the near edge
+        // of the viewport (typically the bottom, since the grid starts
+        // scrolled to the top of the date-descending sort and target is
+        // further down), then a realized row's actual height is measured
+        // to estimate how many rows fit the viewport, and a second
+        // ScrollIntoView targets the row roughly half a viewport further
+        // down — which pushes target from that edge up toward the middle.
+        // Degrades gracefully (as close to centered as the data allows)
+        // when there simply aren't enough rows on one side to fill half a
+        // viewport — e.g. an account with no future-dated projections
+        // already has today's activity at the very top, where there's
+        // nothing above to scroll away.
+        private void CenterRowInGrid(ProjectionItemViewModel target)
+        {
+            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (_viewRef == null || !_viewRef.TryGetTarget(out var fe))
+                    return;
+                if (fe.FindName("TransactionsGrid") is not DataGrid dg)
+                    return;
+
+                TryCenterRowInGrid(dg, target);
+            });
+        }
+
+        // The very first time an account's data loads, this can run before
+        // the window has ever been shown — ShellView's constructor assigns
+        // ProjectionView.ViewModel (triggering this) before Activate() has
+        // produced a single layout pass, so the grid's ActualHeight is
+        // still 0 and ScrollIntoView has no viewport to scroll within: it
+        // silently does nothing, and nothing would otherwise prompt a
+        // retry once the window actually renders. SizeChanged only fires
+        // once real layout happens, so waiting for it (once) here instead
+        // of scrolling blind is what makes this self-correcting.
+        private void TryCenterRowInGrid(DataGrid dg, ProjectionItemViewModel target)
+        {
+            if (dg.ActualHeight <= 0)
+            {
+                void OnSizeChanged(object s, SizeChangedEventArgs e)
+                {
+                    dg.SizeChanged -= OnSizeChanged;
+                    TryCenterRowInGrid(dg, target);
+                }
+                dg.SizeChanged += OnSizeChanged;
+                return;
+            }
+
+            dg.ScrollIntoView(target, null);
+            dg.UpdateLayout();
+
+            var targetIndex = _transactions.IndexOf(target);
+            if (targetIndex < 0)
+                return;
+
+            var rowHeight = FindAnyRealizedRowHeight(dg);
+            if (rowHeight <= 0)
+                return;
+
+            var visibleRows = (int)(dg.ActualHeight / rowHeight);
+            var lookahead = visibleRows / 2;
+            if (lookahead <= 0)
+                return;
+
+            var anchorIndex = Math.Min(targetIndex + lookahead, _transactions.Count - 1);
+            if (anchorIndex <= targetIndex)
+                return;
+
+            dg.ScrollIntoView(_transactions[anchorIndex], null);
+            dg.UpdateLayout();
+        }
+
+        // Rows are a uniform height (same template for every row), so any
+        // single realized row's ActualHeight is representative — walks the
+        // visual tree rather than reaching into the DataGrid's internal
+        // row-recycling state, which isn't part of its public surface.
+        private static double FindAnyRealizedRowHeight(DataGrid dg)
+        {
+            var queue = new Queue<DependencyObject>();
+            queue.Enqueue(dg);
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                if (current is DataGridRow row && row.ActualHeight > 0)
+                    return row.ActualHeight;
+
+                var childCount = VisualTreeHelper.GetChildrenCount(current);
+                for (var i = 0; i < childCount; i++)
+                    queue.Enqueue(VisualTreeHelper.GetChild(current, i));
+            }
+            return 0;
         }
 
         [RelayCommand(CanExecute = nameof(CanDeleteOrPushForward))]
@@ -764,6 +897,16 @@ namespace CashProjection.ViewModels
                     FocusTransaction(restored);
                 else
                     SelectedTransaction = restored;
+            }
+            // Nothing to restore (no previous selection, or Undo/Redo made
+            // the previously-selected row itself disappear) — the Clear()+
+            // AddRange() above just reset the grid's scroll to the top of
+            // the sort order. Fall back to the same "closest to today"
+            // centering the very first load gets, rather than leaving the
+            // user stranded wherever that reset happened to land.
+            else if (FindRowClosestToToday() is { } todayRow)
+            {
+                CenterRowInGrid(todayRow);
             }
         }
 
