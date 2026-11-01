@@ -77,6 +77,19 @@ namespace CashProjection.ViewModels
         [ObservableProperty]
         private BalanceCorrectionViewModel? _balanceCorrectionVM;
 
+        // WinUI only allows one ContentDialog open at a time — ShowAsync()
+        // throws InvalidOperationException on a second one, and that throw
+        // happens inside ShellView.DeferShow's unawaited dispatcher
+        // callback, where nothing catches it (crashes the whole process,
+        // not just this one dialog). The other five IsXxxOpen flags only
+        // ever flip from one deliberate, single user action at a time, so
+        // this was never really reachable for them — but
+        // SuggestBalanceCheckpointIfNeeded below can fire on every account
+        // switch, without that same guarantee. Checked there before even
+        // querying the database for a candidate.
+        private bool IsAnyDialogOpen =>
+            IsFindOpen || IsChangeHistoryOpen || IsMatchReviewOpen || IsPlaidSettingsOpen || IsEditorOpen || IsBalanceCorrectionOpen;
+
         [ObservableProperty]
         private string _findText = string.Empty;
 
@@ -184,6 +197,8 @@ namespace CashProjection.ViewModels
                 var entry = Accounts.FirstOrDefault(e => e.Id == value.Id);
                 if (entry is not null)
                     entry.HasUnseenTransactions = false;
+
+                SuggestBalanceCheckpointIfNeeded(value.Id);
             }
         }
 
@@ -341,7 +356,16 @@ namespace CashProjection.ViewModels
             if (AccountVM.SelectedTransaction is not { } target)
                 return;
 
-            var vm = new BalanceCorrectionViewModel(AccountVM, target);
+            OpenBalanceCorrectionPopover(target);
+        }
+
+        // Shared by the manual "Correct Balance" command above and the
+        // automatic checkpoint suggestion below — same popover either way.
+        // suggestionReason is null for the manual path (no explanation
+        // needed — the user opened it themselves).
+        private void OpenBalanceCorrectionPopover(ProjectionItemViewModel target, string? suggestionReason = null)
+        {
+            var vm = new BalanceCorrectionViewModel(AccountVM, target, suggestionReason);
             vm.RequestClose += () =>
             {
                 IsBalanceCorrectionOpen = false;
@@ -350,6 +374,56 @@ namespace CashProjection.ViewModels
             };
             BalanceCorrectionVM = vm;
             IsBalanceCorrectionOpen = true;
+        }
+
+        // A day with its own Plaid sync lag hasn't necessarily seen every
+        // transaction Plaid will eventually report for it — suggesting a
+        // checkpoint there risks "confirming" a balance that still has
+        // transactions missing. Comfortably longer than the pending-
+        // transaction lag this whole feature exists to detect.
+        private const int MinCheckpointAgeDays = 2;
+
+        // Pending Transactions detection (AccountProjectionViewModel.
+        // ResortAndRecalculate) only trusts a transaction as a balance
+        // checkpoint once it has a real RunningBalance fact recorded
+        // against it — never just the app's own EstimatedBalance. An
+        // account with no such checkpoint anywhere in its history can
+        // never show that indicator, no matter how far Plaid's live
+        // balance drifts from its transactions. Suggest fixing that — not
+        // forcing it — every time the user switches to such an account, by
+        // opening the same "Correct Balance" popover already used for
+        // manual corrections, pre-targeted at the earliest day in the
+        // account's history with exactly one transaction (anything with
+        // two or more same-day transactions is ambiguous — see
+        // BankTransactionRepository.GetEarliestUnambiguousTransaction) that
+        // is also old enough Plaid's data for it should be settled. A
+        // no-op once any correction exists anywhere in the account, and
+        // skipped entirely when no qualifying day exists yet (including an
+        // account with no transactions at all).
+        private void SuggestBalanceCheckpointIfNeeded(int accountId)
+        {
+            if (IsAnyDialogOpen)
+                return;
+
+            if (_bankRepo.HasRunningBalanceAnchor(accountId))
+                return;
+
+            if (_bankRepo.GetEarliestUnambiguousTransaction(accountId) is not { } candidate)
+                return;
+
+            if (candidate.TxnDate.Date > DateTime.Today.AddDays(-MinCheckpointAgeDays))
+                return;
+
+            if (AccountVM.LoadRangeAroundDate(candidate.TxnDate, candidate.Id) is not { } target)
+                return;
+
+            AccountVM.FocusTransaction(target);
+            OpenBalanceCorrectionPopover(
+                target,
+                suggestionReason:
+                    "This account has no verified balance yet, so the \"Pending Transactions\" indicator can never detect when Plaid's live balance is ahead of its downloaded transactions. " +
+                    "This transaction is suggested as a starting checkpoint because it's the earliest day with only one transaction (avoiding any ambiguity about same-day ordering) and is old enough that Plaid's data for it should be final. " +
+                    "Enter the real balance as of this transaction if you know it (e.g. from your bank's own website or a statement) — or just cancel if you don't.");
         }
 
         // Only a genuine real bank transaction has a balance worth

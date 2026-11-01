@@ -108,9 +108,24 @@ namespace CashProjection.Views
         {
             DispatcherQueue.TryEnqueue(async () =>
             {
-                var dialog = factory();
-                dialog.XamlRoot = Content.XamlRoot;
-                await dialog.ShowAsync();
+                try
+                {
+                    var dialog = factory();
+                    dialog.XamlRoot = Content.XamlRoot;
+                    await dialog.ShowAsync();
+                }
+                catch (Exception ex)
+                {
+                    // This runs as an unawaited dispatcher-queued callback —
+                    // nothing else observes a failure here, so letting
+                    // anything escape (most plausibly ShowAsync's
+                    // InvalidOperationException if a second ContentDialog
+                    // somehow tries to open while one's already showing)
+                    // crashes the whole process instead of just failing to
+                    // open one dialog. Worst case here is just "the dialog
+                    // silently didn't open" — far better than APPCRASH.
+                    System.Diagnostics.Debug.WriteLine($"DeferShow failed to show dialog: {ex}");
+                }
             });
         }
     }

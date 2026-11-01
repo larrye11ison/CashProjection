@@ -29,6 +29,23 @@ namespace CashProjection.ViewModels
         public decimal? Payment => _target.Payment;
         public decimal CurrentBalance => _target.Balance;
 
+        // Deposit/Payment are mutually exclusive on a real transaction, so
+        // one line always covers it — shown so the user can actually tell
+        // which transaction they're confirming a balance for, not just its
+        // name and date.
+        public string AmountDisplay => Deposit is { } d
+            ? $"Deposit: {d:C2}"
+            : Payment is { } p
+                ? $"Payment: {p:C2}"
+                : string.Empty;
+
+        // Set only when this popover was opened automatically (see
+        // ShellViewModel.SuggestBalanceCheckpointIfNeeded) rather than via
+        // the manual "Correct Balance" command — explains why a popover the
+        // user didn't ask for just appeared. Null/empty for the manual path,
+        // where no explanation is needed.
+        public string? SuggestionReason { get; }
+
         // Bridges NewBalance (decimal) to the TextBox's string — WinUI's
         // Binding markup has no StringFormat or implicit decimal<->string
         // conversion the way WPF's did.
@@ -42,10 +59,11 @@ namespace CashProjection.ViewModels
             }
         }
 
-        public BalanceCorrectionViewModel(AccountProjectionViewModel accountVM, ProjectionItemViewModel target)
+        public BalanceCorrectionViewModel(AccountProjectionViewModel accountVM, ProjectionItemViewModel target, string? suggestionReason = null)
         {
             _accountVM = accountVM;
             _target = target;
+            SuggestionReason = suggestionReason;
             NewBalance = target.Balance;
         }
 
