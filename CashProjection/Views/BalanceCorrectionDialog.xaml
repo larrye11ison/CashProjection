@@ -49,6 +49,16 @@
             </Grid>
         </Border>
 
+        <!--
+            Explains why this popover opened on its own — only set when
+            ShellViewModel.SuggestBalanceCheckpointIfNeeded triggered it;
+            absent (and collapsed) for the manual "Correct Balance" command.
+        -->
+        <TextBlock
+            Text="{x:Bind ViewModel.SuggestionReason, Mode=OneWay}"
+            TextWrapping="Wrap"
+            Visibility="{x:Bind ViewModel.SuggestionReason, Mode=OneWay, Converter={StaticResource StringToVis}}" />
+
         <!--  Read-only context so it's clear which transaction this is.  -->
         <StackPanel>
             <TextBlock
@@ -60,6 +70,11 @@
                 FontSize="12"
                 Opacity="0.65"
                 Text="{x:Bind ViewModel.TransactionDateDisplay}" />
+            <TextBlock
+                Margin="0,2,0,0"
+                FontSize="12"
+                Opacity="0.65"
+                Text="{x:Bind ViewModel.AmountDisplay}" />
         </StackPanel>
 
         <StackPanel Spacing="4">

@@ -233,6 +233,53 @@ namespace CashProjection.Data.Repositories
             return reader.Read() ? Read(reader) : null;
         }
 
+        // Earliest day in this account's history with exactly one
+        // transaction — used to anchor the "suggest a balance checkpoint"
+        // prompt (ShellViewModel) to a point with no ordering ambiguity. A
+        // day with two or more transactions can't be trusted as a
+        // checkpoint: RecalculateEstimatedBalances applies a checkpoint's
+        // known balance to the WHOLE date group at once, so a user-entered
+        // balance only means "after this transaction" if it's provably the
+        // only one that day. Null means no such day exists yet (including
+        // the trivial case of no transactions at all).
+        public BankTransaction? GetEarliestUnambiguousTransaction(int accountId)
+        {
+            using var cmd = _db.Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, AccountId, PlaidTransactionId, TxnDate, Description, Amount, Pending, Category, ImportedAtUtc, RunningBalance, PlaidAccountId, VendorName, EstimatedBalance
+                FROM BankTransactions
+                WHERE AccountId = $accountId
+                  AND TxnDate = (
+                      SELECT TxnDate
+                      FROM BankTransactions
+                      WHERE AccountId = $accountId
+                      GROUP BY TxnDate
+                      HAVING COUNT(*) = 1
+                      ORDER BY TxnDate ASC
+                      LIMIT 1
+                  );
+                """;
+            cmd.Parameters.AddWithValue("$accountId", accountId);
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? Read(reader) : null;
+        }
+
+        // Whether this account has ever had a real balance "fact" recorded
+        // against any transaction — either a bank-reported running balance
+        // or a manual "Correct Balance" override. Without at least one,
+        // AccountProjectionViewModel.ResortAndRecalculate's gap-detection
+        // walk has nothing to check the live balance against, so the
+        // Pending Transactions indicator never fires for this account.
+        public bool HasRunningBalanceAnchor(int accountId)
+        {
+            using var cmd = _db.Connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT EXISTS(SELECT 1 FROM BankTransactions WHERE AccountId = $accountId AND RunningBalance IS NOT NULL);
+                """;
+            cmd.Parameters.AddWithValue("$accountId", accountId);
+            return (long)cmd.ExecuteScalar()! != 0;
+        }
+
         public void Upsert(BankTransaction txn)
         {
             using var cmd = _db.Connection.CreateCommand();
