@@ -1,6 +1,6 @@
 # Cash Projection
 
-A modern WinUI 3 desktop application for managing and projecting cash flow over time. Track your recurring transactions, visualize your account balance, and identify potential cash flow issues before they happen.
+A modern WinUI 3 desktop application for doing a simple projection of bank account balances. Track your recurring transactions, visualize your account balance, and identify potential cash flow issues before they happen.
 
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)
 ![WinUI 3](https://img.shields.io/badge/WinUI_3-Windows_App_SDK-0078D4?logo=windows)
